@@ -7,31 +7,43 @@ def softmax(x):
 	return np.exp(x) / np.sum(np.exp(x), axis=0)
 
 
-def load_batch(filename):
+def load_batch(filepath):
 	""" Copied from the dataset website """
-	with open(filename, 'rb') as fo:
+	with open(filepath, 'rb') as fo:
 		dict = pickle.load(fo, encoding='bytes')
 	return dict
 
 
-def split_batch(batch):
-	""" Split the input batch into its labels and its data """
-	X = (batch[b'data'] / 255).T
-	y = batch[b'labels']
-	Y = (np.eye(10)[y]).T
-	# X = (dataDict[b"data"] / 255).T
-	# y = dataDict[b"labels"]
-	# Y = (np.eye(10)[y]).T
+def split_batch(batch, num_of_labels):
+	""" Split the input batch into its labels and its data
+	X: image pixel data, size d x n, entries between 0 and 1. n is number of
+	   images (10000) and d dimensionality of each image (3072 = 32 * 32 * 3).
+	Y: K x n (with K = # of labels = 10) and contains the one-hot
+	   representation of the label for each image (0 to 9).
+	y: vector of length n containing label for each image, 0 to 9."""
+
+	X = (batch[b'data'] / 255).T # Normalize by dividing over 255.
+	# y = batch[b'labels']
+	y = np.asarray(batch[b'labels'])
+	Y = (np.eye(num_of_labels)[y]).T
 
 	return X, Y, y
 
 
-def unpickle(filename):
-    """Unpickle a file"""
-    with open(filename, 'rb') as f:
-        file_dict = pickle.load(f, encoding='bytes')
+def load_dataset(folder, filename, num_of_labels):
+	dataset_dict = load_batch(folder + filename)
+	X, Y, y = split_batch(dataset_dict, num_of_labels=num_of_labels)
+	dataset = {'X': X, 'Y': Y, 'y': y}
 
-    return file_dict
+	return dataset
+	
+
+def unpickle(filename):
+	"""Unpickle a file"""
+	with open(filename, 'rb') as f:
+		file_dict = pickle.load(f, encoding='bytes')
+
+	return file_dict
 
 
 def compute_grads_num(X, Y, P, W, b, lamda, h):

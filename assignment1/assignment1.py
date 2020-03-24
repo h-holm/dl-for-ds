@@ -17,24 +17,30 @@ from functions import *
 __author__ = "Henrik Holm"
 
 
+
+
 def main():
+    print("------------------------ Preparing dataset ------------------------")
     datasets_folder = "Datasets/cifar-10-batches-py/"
 
     labels = unpickle(datasets_folder + "batches.meta")[b'label_names']
-    print(labels)
 
-    # Training, validation and testing respectively.
+    # Training with 1, validation with 2 and testing with test.
+    train_set = load_dataset(datasets_folder, "data_batch_1", num_of_labels=len(labels))
+    test_set = load_dataset(datasets_folder, "data_batch_2", num_of_labels=len(labels))
+    val_set = load_dataset(datasets_folder, "test_batch", num_of_labels=len(labels))
+
     train_dict = load_batch(datasets_folder + "data_batch_1")
     val_dict = load_batch(datasets_folder + "data_batch_2")
     test_dict = load_batch(datasets_folder + "test_batch")
 
-    X_train, Y_train, y_train = split_batch(train_dict)
-    X_val, Y_val, y_val = split_batch(val_dict)
-    X_test, Y_test, y_test = split_batch(test_dict)
+    X_train, Y_train, y_train = split_batch(train_dict, num_of_labels=len(labels))
+    X_val, Y_val, y_val = split_batch(val_dict, num_of_labels=len(labels))
+    X_test, Y_test, y_test = split_batch(test_dict, num_of_labels=len(labels))
 
-    print(y_train)
-    print(X_train)
-    print(Y_train)
+    print(X_train, Y_train, y_train)
+    print(train_set)
+
 
 
 
