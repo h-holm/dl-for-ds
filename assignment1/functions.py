@@ -36,7 +36,19 @@ def load_dataset(folder, filename, num_of_labels):
 	dataset = {'X': X, 'Y': Y, 'y': y}
 
 	return dataset
-	
+
+
+def preprocess_dataset(training_data):
+	# "Both mean_X and std_X have size d x 1".
+	mean_X = np.mean(training_data, axis=1)
+	std_X = np.std(training_data, axis=1)
+
+	# TODO: Be sure that this actually does what you believe.
+	training_data = training_data - np.array([mean_X]).T
+	training_data = training_data / np.array([std_X]).T
+
+	return training_data
+
 
 def unpickle(filename):
 	"""Unpickle a file"""
