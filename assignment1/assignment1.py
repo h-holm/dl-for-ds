@@ -17,10 +17,42 @@ from functions import *
 __author__ = "Henrik Holm"
 
 
+class SingleLayerNetwork():
+    """ Single-layer network classifier based on mini-batch gradient descent """
+
+    def __init__(self, labels, data):
+        """ W: weight matrix of size K x d
+            b: bias matrix of size K x 1 """
+        self.labels = labels
+        self.K = len(self.labels)
+
+        self.data = data
+        self.d = self.data['train_set']['X'].shape[0]
+        self.n = self.data['train_set']['X'].shape[1]
+
+        # Initialize as Gaussian random values with 0 mean and 0.01 stdev.
+        self.W = np.random.normal(0, 0.01, (self.K, self.d))
+        self.b = np.random.normal(0, 0.01, (self.K, 1))
+
+    def evaluate_classifier(self, X):
+        """ Implement SoftMax using equations 1 and 2
+            Each column of X corresponds to an image and it has size d x n """
+        # Element-wise multiplication: @
+        s = (self.W @ X) + self.b
+        # p has size K x n, where n is n of the input X.
+        p = self.soft_max(s)
+        return p
+
+    def soft_max(self, s):
+    	""" Standard definition of the softmax function """
+    	return np.exp(s) / np.sum(np.exp(s), axis=0)
+
+
 def main():
+    np.random.seed(12345)
+
     print()
     print("------------------------ Loading dataset ------------------------")
-
     datasets_folder = "Datasets/cifar-10-batches-py/"
 
     labels = unpickle(datasets_folder + "batches.meta")[b'label_names']
@@ -31,62 +63,14 @@ def main():
     val_set = load_dataset(datasets_folder, "test_batch", num_of_labels=len(labels))
 
     datasets = {'train_set': train_set, 'test_set': test_set, 'val_set': val_set}
-
     print()
     print("------------------------ Preparing dataset ------------------------")
-
     for dataset_name, dataset in datasets.items():
         dataset['X'] = preprocess_dataset(dataset['X'])
 
-    # data = {
-    #     'X_train': X_train,
-    #     'Y_train': Y_train,
-    #     'y_train': y_train,
-    #     'X_val': X_val,
-    #     'Y_val': Y_val,
-    #     'y_val': y_val,
-    #     'X_test': X_test,
-    #     'Y_test': Y_test,
-    #     'y_test': y_test
-    # }
-    #
-    # clf = Classifier(data, labels)
-    #
-    # lambdas = [0, 0, .1, 1]
-    # etas = [.1, .01, .01, .01]
-    #
-    # for i in range(4):
-    #     acc_train_set = []
-    #     acc_val_set = []
-    #     acc_test_set = []
-    #     for j in range(10):
-    #         acc_train, acc_val, acc_test = clf.mini_batch_gd(
-    #                 X_train,
-    #                 Y_train,
-    #                 labda=lambdas[i],
-    #                 eta=etas[i],
-    #                 verbose=False)
-    #
-    #         acc_train_set.append(acc_train)
-    #         acc_val_set.append(acc_val)
-    #         acc_test_set.append(acc_test)
-    #     print("Settting " + str(i) + ":\n")
-    #     print("Train mean acc:" + str(statistics.mean(acc_train_set)))
-    #     print("Val mean acc:" + str(statistics.mean(acc_val_set)))
-    #     print("Test mean acc:" + str(statistics.mean(acc_test_set)))
-    #     print("Train stdev acc:" + str(statistics.stdev(acc_train_set)))
-    #     print("Val stdev acc:" + str(statistics.stdev(acc_val_set)))
-    #     print("Test stdev acc:" + str(statistics.stdev(acc_test_set)))
-    #
-    #     np.random.seed(0)
-    #
-    #     # Param settings 1
-    #     clf.mini_batch_gd(X_train, Y_train, title=str(i) + "_cost_plot_test",
-    #             labda=lambdas[i], eta=etas[i], plot_performance=True)
-    #     clf.plot_learned_images(save=True, num=i)
-    #
-    # # Unit testing
-    # unittest.main()
+    clf = SingleLayerNetwork(labels, datasets)
+    clf.evaluate_classifier(datasets['train_set']['X'][:, :100])
+
     print()
 
     return
