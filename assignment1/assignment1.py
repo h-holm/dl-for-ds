@@ -105,6 +105,48 @@ class SingleLayerNetwork():
 
         return grad_W, grad_b
 
+    def compute_gradients_num(self, X_batch, Y_batch, our_lambda=0, h=1e-6):
+        """ Compute gradients of the weight and bias numerically.
+            - X_batch is a D x N matrix.
+            - Y_batch is a C x N one-hot-encoding vector.
+            - our_lambda is the regularization term ("lambda" is reserved).
+            - h is a marginal offset.
+            Returns the gradients of the weight and bias. """
+
+        grad_W = np.zeros(self.W.shape)
+        grad_b = np.zeros(self.b.shape)
+
+        b_try = np.copy(self.b)
+        W_try = np.copy(self.W)
+
+        for i in range(len(self.b)):
+            self.b = b_try
+            # self.b[i] += h
+            self.b[i] -= h
+            c1 = self.compute_cost(X_batch, Y_batch, our_lambda)
+            # self.b[i] -= (2 * h)
+            self.b[i] += h
+            c2 = self.compute_cost(X_batch, Y_batch, our_lambda)
+            grad_b[i] = (c1 - c2) / (2 * h)
+
+        # Given the shape of an array, an ndindex instance iterates over the
+        # N-dimensional index of the array. At each iteration a tuple of indices
+        # is returned, the last dimension is iterated over first.
+        for i in np.ndindex(self.W.shape):
+            self.W = W_try
+            # self.W[i] = self.W[i] + h
+            self.W[i] -= h
+            c1 = self.compute_cost(X_batch, Y_batch, our_lambda)
+            # self.W[i] = self.W[i] - (2 * h)
+            self.W[i] += h
+            c2 = self.compute_cost(X_batch, Y_batch, our_lambda)
+            grad_W[i] = (c1 - c2) / (2 * h)
+
+        print(grad_W.shape)
+        print(grad_b.shape)
+
+        return grad_W, grad_b
+
 
 def main():
     np.random.seed(12345)
@@ -129,55 +171,6 @@ def main():
     clf = SingleLayerNetwork(labels, datasets)
     p = clf.evaluate_classifier(datasets['train_set']['X'][:, :100])
 
-    # data = {
-    #     'X_train': X_train,
-    #     'Y_train': Y_train,
-    #     'y_train': y_train,
-    #     'X_val': X_val,
-    #     'Y_val': Y_val,
-    #     'y_val': y_val,
-    #     'X_test': X_test,
-    #     'Y_test': Y_test,
-    #     'y_test': y_test
-    # }
-    #
-    # clf = Classifier(data, labels)
-    #
-    # our_lambdas = [0, 0, .1, 1]
-    # etas = [.1, .01, .01, .01]
-    #
-    # for i in range(4):
-    #     acc_train_set = []
-    #     acc_val_set = []
-    #     acc_test_set = []
-    #     for j in range(10):
-    #         acc_train, acc_val, acc_test = clf.mini_batch_gd(
-    #                 X_train,
-    #                 Y_train,
-    #                 our_lambda=our_lambdas[i],
-    #                 eta=etas[i],
-    #                 verbose=False)
-    #
-    #         acc_train_set.append(acc_train)
-    #         acc_val_set.append(acc_val)
-    #         acc_test_set.append(acc_test)
-    #     print("Settting " + str(i) + ":\n")
-    #     print("Train mean acc:" + str(statistics.mean(acc_train_set)))
-    #     print("Val mean acc:" + str(statistics.mean(acc_val_set)))
-    #     print("Test mean acc:" + str(statistics.mean(acc_test_set)))
-    #     print("Train stdev acc:" + str(statistics.stdev(acc_train_set)))
-    #     print("Val stdev acc:" + str(statistics.stdev(acc_val_set)))
-    #     print("Test stdev acc:" + str(statistics.stdev(acc_test_set)))
-    #
-    #     np.random.seed(0)
-    #
-    #     # Param settings 1
-    #     clf.mini_batch_gd(X_train, Y_train, title=str(i) + "_cost_plot_test",
-    #             our_lambda=our_lambdas[i], eta=etas[i], plot_performance=True)
-    #     clf.plot_learned_images(save=True, num=i)
-    #
-    # # Unit testing
-    # unittest.main()
     print()
 
     return
