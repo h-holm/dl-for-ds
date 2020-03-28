@@ -55,10 +55,10 @@ class SingleLayerNetwork():
             - our_lambda is the regularization term ("lambda" is reserved).
             Returns the cost, which is a scalar. """
         N = X.shape[1]
-        print(X.shape)
-        print(N)
-        print(Y.shape)
-        print(our_lambda)
+        # print(X.shape)
+        # print(N)
+        # print(Y.shape)
+        # print(our_lambda)
         p = self.evaluate_classifier(X)
         # If label is encoded as one-hot repr., then cross entropy is -log(yTp).
         cost = ((1 / N) * -np.sum(Y * np.log(p))) + (our_lambda * np.sum(self.W**2))
@@ -86,12 +86,10 @@ class SingleLayerNetwork():
             - Y_batch is a C x N one-hot-encoding vector
             - our_lambda is the regularization term ("lambda" is reserved).
             Returns the gradients of the weight and bias. """
+        self.W = self.W[:, :10]
+
         N = X_batch.shape[1]
         C = Y_batch.shape[0]
-        print(X_batch.shape)
-        print(N)
-        print(Y_batch.shape)
-        print(C)
 
         P_batch = self.evaluate_classifier(X_batch)
 
@@ -121,35 +119,29 @@ class SingleLayerNetwork():
 
         for i in range(len(self.b)):
             self.b = b_try
-            # self.b[i] += h
             self.b[i] -= h
             c1 = self.compute_cost(X_batch, Y_batch, our_lambda)
-            # self.b[i] -= (2 * h)
-            self.b[i] += h
+            self.b[i] += (2 * h)
             c2 = self.compute_cost(X_batch, Y_batch, our_lambda)
-            grad_b[i] = (c1 - c2) / (2 * h)
+            grad_b[i] = (c2 - c1) / (2 * h)
 
         # Given the shape of an array, an ndindex instance iterates over the
         # N-dimensional index of the array. At each iteration a tuple of indices
         # is returned, the last dimension is iterated over first.
         for i in np.ndindex(self.W.shape):
             self.W = W_try
-            # self.W[i] = self.W[i] + h
             self.W[i] -= h
             c1 = self.compute_cost(X_batch, Y_batch, our_lambda)
-            # self.W[i] = self.W[i] - (2 * h)
-            self.W[i] += h
+            self.W[i] += (2 * h)
             c2 = self.compute_cost(X_batch, Y_batch, our_lambda)
-            grad_W[i] = (c1 - c2) / (2 * h)
-
-        print(grad_W.shape)
-        print(grad_b.shape)
+            grad_W[i] = (c2 - c1) / (2 * h)
 
         return grad_W, grad_b
 
 
 def main():
     np.random.seed(12345)
+    test_numerically = False
 
     print()
     print("------------------------ Loading dataset ------------------------")
@@ -170,6 +162,21 @@ def main():
 
     clf = SingleLayerNetwork(labels, datasets)
     p = clf.evaluate_classifier(datasets['train_set']['X'][:, :100])
+    # print(p)
+
+    if test_numerically:
+        grad_W, grad_b = clf.compute_gradients(datasets['train_set']['X'][:10, :2],
+                                               datasets['train_set']['Y'][:, :2],
+                                               our_lambda=0)
+        grad_W_num, grad_b_num = clf.compute_gradients_num(datasets['train_set']['X'][:10, :2],
+                                                           datasets['train_set']['Y'][:, :2],
+                                                           our_lambda=0)
+
+        # From the assignment PDF: "If all these absolutes difference are small
+        # (<1e-6), then they have produced the same result.
+        # np.allclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False)[source]
+        print(np.allclose(grad_W, grad_W_num, atol=1e-07))
+        print(grad_W - grad_W_num)
 
     print()
 
