@@ -71,7 +71,7 @@ def unpickle(filename):
 	return file_dict
 
 
-def montage(W):
+def montage(W, title):
 	""" Display the image for each label in W """
 	fig, ax = plt.subplots(2,5)
 	for i in range(2):
@@ -82,13 +82,19 @@ def montage(W):
 			ax[i][j].imshow(sim, interpolation='nearest')
 			ax[i][j].set_title("y="+str(5*i+j))
 			ax[i][j].axis('off')
+
+	plt.savefig(f'plots/weights_{title}.png', bbox_inches="tight")
 	plt.show()
+
+	return
 
 
 def save_as_mat(data, name="model"):
 	""" Used to transfer a python model to matlab """
 	import scipy.io as sio
 	sio.savemat(name+'.mat',{name:b})
+
+	return
 
 
 def plot_lines(line_A, line_B, label_A, label_B, xlabel, ylabel, title):
@@ -271,9 +277,10 @@ class SingleLayerNetwork():
 
 
 def main():
-	np.random.seed(12345)
+	seed = 12345
+	np.random.seed(seed)
 	test_numerically = False
-	our_lambda = 0
+	our_lambda = 1
 	n_batch = 100
 	eta = 0.001
 	n_epochs = 40
@@ -330,12 +337,15 @@ def main():
 	print(f'Validation data accuracy:\t{accuracies["val"]}')
 	print(f'Test data accuracy:\t\t{accuracies["test"]}')
 
-	if costs:
-		plot_lines(line_A=costs['train'], line_B=costs['val'],
-				   label_A='training loss', label_B='validation loss',
-				   xlabel='epoch', ylabel='loss', title='epochs_costs')
+	tracc = accuracies["train"]
+	vacc = accuracies["val"]
+	teacc = accuracies["test"]
+	title = f'lambda{our_lambda}_n-batch{n_batch}_eta{eta}_n-epochs{n_epochs}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+	plot_lines(line_A=costs['train'], line_B=costs['val'],
+			   label_A='training loss', label_B='validation loss',
+			   xlabel='epoch', ylabel='loss', title=title)
 
-	montage(clf.W)
+	montage(clf.W, title)
 
 	print()
 
