@@ -8,9 +8,6 @@ an L2 regularization term on the weight matrix."""
 import pickle
 import matplotlib.pyplot as plt
 import numpy as np
-import unittest
-import statistics
-import re
 
 
 __author__ = "Henrik Holm"
@@ -280,7 +277,7 @@ def main():
 	seed = 12345
 	np.random.seed(seed)
 	test_numerically = False
-	our_lambda = 1
+	our_lambda = 0
 	n_batch = 100
 	eta = 0.001
 	n_epochs = 40
@@ -302,19 +299,33 @@ def main():
 	for dataset_name, dataset in datasets.items():
 		dataset['X'] = preprocess_dataset(dataset['X'])
 
-	clf = SingleLayerNetwork(labels, datasets)
-	# p = clf.evaluate_classifier(datasets['train_set']['X'][:, :100])
-	# print(p)
-
 	if test_numerically:
-		# Remember to change the sizes of the matrices.
 		print()
-		print("----------------- Running gradient tests -----------------")
-		grad_W, grad_b = clf.compute_gradients(datasets['train_set']['X'][:10, :2],
-											   datasets['train_set']['Y'][:, :2],
+		print("-------------------- Running gradient tests --------------------")
+		num_images = 2
+		num_pixels = 100
+		test_train, test_val, test_test = dict(), dict(), dict()
+
+		test_train['X'] = train_set['X'][:num_images, :num_pixels]
+		test_val['X'] = val_set['X'][:num_images, :num_pixels]
+		test_test['X'] = test_set['X'][:num_images, :num_pixels]
+
+		test_train['Y'] = train_set['Y'][:, :num_pixels]
+		test_val['Y'] = val_set['Y'][:, :num_pixels]
+		test_test['Y'] = test_set['Y'][:, :num_pixels]
+
+		test_train['y'] = train_set['y'][:num_pixels]
+		test_val['y'] = val_set['y'][:num_pixels]
+		test_test['y'] = test_set['y'][:num_pixels]
+
+		test_datasets = {'train_set': test_train, 'test_set': test_test, 'val_set': test_val}
+		clf = SingleLayerNetwork(labels, test_datasets)
+
+		grad_W, grad_b = clf.compute_gradients(test_datasets['train_set']['X'],
+											   test_datasets['train_set']['Y'],
 											   our_lambda=0)
-		grad_W_num, grad_b_num = clf.compute_gradients_num(datasets['train_set']['X'][:10, :2],
-														   datasets['train_set']['Y'][:, :2],
+		grad_W_num, grad_b_num = clf.compute_gradients_num(test_datasets['train_set']['X'],
+														   test_datasets['train_set']['Y'],
 														   our_lambda=0)
 
 		# From the assignment PDF: "If all these absolutes difference are small
@@ -325,6 +336,7 @@ def main():
 
 	print()
 	print("---------------------- Learning classifier ----------------------")
+	clf = SingleLayerNetwork(labels, datasets)
 	accuracies, costs = clf.mini_batch_gradient_descent(datasets['train_set']['X'],
 														datasets['train_set']['Y'],
 														our_lambda=our_lambda,
