@@ -47,16 +47,16 @@ def load_dataset(folder, filename, num_of_labels):
 	return dataset
 
 
-def preprocess_dataset(training_data):
+def preprocess_dataset(data):
 	""" Pre-process data by normalizing """
 	# "Both mean_X and std_X have size d x 1".
-	mean_X = np.mean(training_data, axis=1)
-	std_X = np.std(training_data, axis=1)
+	mean_X = np.mean(data, axis=1)
+	std_X = np.std(data, axis=1)
 
-	training_data = training_data - np.array([mean_X]).T
-	training_data = training_data / np.array([std_X]).T
+	data = data - np.array([mean_X]).T
+	data = data / np.array([std_X]).T
 
-	return training_data
+	return data
 
 
 def unpickle(filename):
@@ -127,7 +127,7 @@ class SingleLayerNetwork():
 		if xavier:
 			# https://towardsdatascience.com/weight-initialization-in-neural-networks-a-journey-from-the-basics-to-kaiming-954fb9b47c79
 			# self.W = np.random.normal(0, np.sqrt(2 / (d + K)), (K, d))
-			# As per lecture 4.
+			# As per lecture 4:
 			self.W = np.random.normal(0, 1 / np.sqrt(d), (K, d))
 		else:
 			# Initialize as Gaussian random values with 0 mean and 0.01 stdev.
@@ -155,9 +155,23 @@ class SingleLayerNetwork():
 			- our_lambda is the regularization term ("lambda" is reserved).
 			Returns the cost, which is a scalar. """
 		N = X.shape[1]
-		p = self.evaluate_classifier(X)
-		# If label is encoded as one-hot repr., then cross entropy is -log(yTp).
-		cost = ((1 / N) * -np.sum(Y * np.log(p))) + (our_lambda * np.sum(self.W**2))
+		if self.SVM_loss:
+			scores = self.evaluate_classifier(X)
+			# http://stackoverflow.com/a/23435843/459241
+			yi_scores = scores.T[np.arange(scores.shape[1]), np.argmax(Y, axis=0)].T
+
+			margins = np.maximum(0, scores - np.asarray(yi_scores) + 1)
+			margins.T[np.arange(N), np.argmax(Y, axis=0)] = 0
+
+			loss = Y.shape[0] * np.mean(np.sum(margins, axis=1))
+			loss += 0.5 * our_lambda * np.sum(self.W * self.W)
+			cost = (1 / N) * loss
+		else:
+			p = self.evaluate_classifier(X)
+			# If label is encoded as one-hot repr., then cross entropy is -log(yTp).
+			reg = our_lambda * np.sum(self.W * self.W)
+			cost = ((1 / N) * -np.sum(Y * np.log(p))) + reg
+
 		return cost
 
 	def compute_accuracy(self, X, y):
@@ -187,25 +201,15 @@ class SingleLayerNetwork():
 
 	def compute_gradients_SVM_loss(self, X_batch, Y_batch, our_lambda):
 		"""
-		Data of dimension D, C classes, and minibatches of N examples.
-
 		Inputs:
-		- W: A numpy array of shape (D, C) containing weights.				(K, d)
-		- X: A numpy array of shape (N, D) containing a minibatch of data.	(d, N)
-		- y: A numpy array of shape (N,) containing training labels; y[i] = c means
-		that X[i] has label c, where 0 <= c < C.
+		- X_batch: (d, N) numpy array of shape containing a minibatch of data.
+		- Y_batch is a C x N one-hot-encoding vector
 		- our_lambda: (float) regularization strength
-
-		Returns a tuple of:
-		- loss as single float
-		- gradient with respect to weights W; an array of same shape as W
 		"""
 		# Inspiration drawn from the following link:
 		# https://mlxai.github.io/2017/01/06/vectorized-implementation-of-svm-loss-and-gradient-update.html
-
 		N = X_batch.shape[1]
 
-		loss = 0.0
 		grad_W = np.zeros(self.W.shape) # initialize the gradient as zero
 
 		scores = self.evaluate_classifier(X_batch)
@@ -215,17 +219,12 @@ class SingleLayerNetwork():
 		margins = np.maximum(0, scores - np.asarray(yi_scores) + 1)
 		margins.T[np.arange(N), np.argmax(Y_batch, axis=0)] = 0
 
-		loss = np.mean(np.sum(margins, axis=1))
-		loss += 0.5 * our_lambda * np.sum(self.W * self.W)
-		cost = (1 / N) * loss
-
 		binary = margins
 		binary[margins > 0] = 1
 		row_sum = np.sum(binary, axis=0)
 		binary.T[np.arange(N), np.argmax(Y_batch, axis=0)] = -row_sum.T
 
-		grad_W = np.dot(binary, X_batch.T) / N + our_lambda * self.W
-
+		grad_W = (np.dot(binary, X_batch.T) / N) + (our_lambda * self.W)
 		grad_b = np.reshape(np.sum(binary, axis=1) / binary.shape[1], self.b.shape)
 
 		return grad_W, grad_b
@@ -238,27 +237,45 @@ class SingleLayerNetwork():
 			Returns the gradients of the weight and bias. """
 		if self.SVM_loss:
 			grad_W, grad_b = self.compute_gradients_SVM_loss(X_batch, Y_batch, our_lambda)
-			# grad_W = np.zeros((C, X_batch.shape[0]))
-			# grad_b = np.zeros((C, 1))
-			# for i in range(N):
-			# 	x = X_batch[:, i]
-			# 	y_int = np.where(Y_batch[:, [i]].T[0] == 1)[0][0]
-			# 	s = np.dot(self.W, X_batch[:, [i]]) + self.b
-			# 	for j in range(C):
-			# 		if j != y_int:
-			# 			if max(0, s[j] - s[y_int] + 1) != 0:
-			# 				grad_W[j] += x
-			# 				grad_W[y_int] -= x
-			# 				grad_b[j, 0] += 1
-			# 				grad_b[y_int, 0] -= 1
-			# grad_W /= N
-			# grad_W += (our_lambda * self.W)
-			# grad_b /= N
 		else:
 			grad_W, grad_b = self.compute_gradients_entropy_loss(X_batch, Y_batch, our_lambda)
 
 		return grad_W, grad_b
 
+	def compute_gradients_num(self, X_batch, Y_batch, our_lambda=0, h=1e-6):
+		""" Compute gradients of the weight and bias numerically.
+			- X_batch is a D x N matrix.
+			- Y_batch is a C x N one-hot-encoding vector.
+			- our_lambda is the regularization term ("lambda" is reserved).
+			- h is a marginal offset.
+			Returns the gradients of the weight and bias. """
+
+		grad_W = np.zeros(self.W.shape)
+		grad_b = np.zeros(self.b.shape)
+
+		b_try = np.copy(self.b)
+		W_try = np.copy(self.W)
+
+		for i in range(len(self.b)):
+			self.b = b_try
+			self.b[i] -= h
+			c1 = self.compute_cost(X_batch, Y_batch, our_lambda)
+			self.b[i] += (2 * h)
+			c2 = self.compute_cost(X_batch, Y_batch, our_lambda)
+			grad_b[i] = (c2 - c1) / (2 * h)
+
+		# Given the shape of an array, an ndindex instance iterates over the
+		# N-dimensional index of the array. At each iteration a tuple of indices
+		# is returned, the last dimension is iterated over first.
+		for i in np.ndindex(self.W.shape):
+			self.W = W_try
+			self.W[i] -= h
+			c1 = self.compute_cost(X_batch, Y_batch, our_lambda)
+			self.W[i] += (2 * h)
+			c2 = self.compute_cost(X_batch, Y_batch, our_lambda)
+			grad_W[i] = (c2 - c1) / (2 * h)
+
+		return grad_W, grad_b
 
 	def mini_batch_gradient_descent(self, X, Y, our_lambda=0, n_batch=100,
 									eta=0.001, n_epochs=20, save_costs=False):
@@ -297,7 +314,7 @@ class SingleLayerNetwork():
 
 			# Bonus B) implement a decay of the learning rate.
 			eta *= self.decay_factor
-			print(f'Current learning rate: {eta}')
+			# print(f'Current learning rate: {eta}')
 
 		accuracies['train'] = self.compute_accuracy(self.data['train_set']['X'],
 													self.data['train_set']['y'])
@@ -306,7 +323,6 @@ class SingleLayerNetwork():
 		accuracies['test'] = self.compute_accuracy(self.data['test_set']['X'],
 												   self.data['test_set']['y'])
 
-
 		return accuracies, costs
 
 
@@ -314,10 +330,10 @@ def main():
 	seed = 12345
 	np.random.seed(seed)
 	our_lambda = 0.0
-	n_epochs = 40
+	n_epochs = 60
 	n_batch = 100
 	eta = 0.1
-	decay_factor = 0.90
+	decay_factor = 0.9
 	xavier = True
 	SVM_loss = True
 	test_numerically = False
@@ -372,30 +388,15 @@ def main():
 		print("-------------------- Running gradient tests ---------------------")
 		num_images = 100
 		num_pixels = 3072
-		test_train, test_val, test_test = dict(), dict(), dict()
 
-		test_train['X'] = train_set['X'][:num_images, :num_pixels]
-		test_val['X'] = val_set['X'][:num_images, :num_pixels]
-		test_test['X'] = test_set['X'][:num_images, :num_pixels]
+		X_batch = train_set['X'][:, :num_images]
+		Y_batch = train_set['Y'][:, :num_images]
 
-		test_train['Y'] = train_set['Y'][:, :num_pixels]
-		test_val['Y'] = val_set['Y'][:, :num_pixels]
-		test_test['Y'] = test_set['Y'][:, :num_pixels]
-
-		test_train['y'] = train_set['y'][:num_pixels]
-		test_val['y'] = val_set['y'][:num_pixels]
-		test_test['y'] = test_set['y'][:num_pixels]
-
-		test_datasets = {'train_set': test_train, 'test_set': test_test, 'val_set': test_val}
 		clf = SingleLayerNetwork(labels, datasets, decay_factor=decay_factor,
 								 xavier=xavier, SVM_loss=SVM_loss)
 
-		grad_W, grad_b = clf.compute_gradients(test_datasets['train_set']['X'],
-											   test_datasets['train_set']['Y'],
-											   our_lambda=0)
-		grad_W_num, grad_b_num = clf.compute_gradients_num(test_datasets['train_set']['X'],
-														   test_datasets['train_set']['Y'],
-														   our_lambda=0)
+		grad_W, grad_b = clf.compute_gradients(X_batch, Y_batch, our_lambda=0)
+		grad_W_num, grad_b_num = clf.compute_gradients_num(X_batch, Y_batch, our_lambda=0)
 
 		# From the assignment PDF: "If all these absolutes difference are small
 		# (<1e-6), then they have produced the same result.
