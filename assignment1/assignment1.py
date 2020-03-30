@@ -8,6 +8,7 @@ an L2 regularization term on the weight matrix."""
 import pickle
 import matplotlib.pyplot as plt
 import numpy as np
+import re
 
 
 __author__ = "Henrik Holm"
@@ -68,28 +69,20 @@ def unpickle(filename):
 	return file_dict
 
 
-def montage(W, title):
+def montage(W, title, labels):
 	""" Display the image for each label in W """
-	fig, ax = plt.subplots(2,5)
+	fig, ax = plt.subplots(2, 5)
 	for i in range(2):
 		for j in range(5):
-			im  = W[i+j,:].reshape(32,32,3, order='F')
+			im  = W[((i * 5) + j), :].reshape(32,32,3, order='F')
 			sim = (im-np.min(im[:]))/(np.max(im[:])-np.min(im[:]))
 			sim = sim.transpose(1,0,2)
 			ax[i][j].imshow(sim, interpolation='nearest')
-			ax[i][j].set_title("y="+str(5*i+j))
+			ax[i][j].set_title(str(labels[((5 * i) + j)]), fontsize=10)
 			ax[i][j].axis('off')
 
 	plt.savefig(f'plots/weights_{title}.png', bbox_inches="tight")
 	plt.show()
-
-	return
-
-
-def save_as_mat(data, name="model"):
-	""" Used to transfer a python model to matlab """
-	import scipy.io as sio
-	sio.savemat(name+'.mat',{name:b})
 
 	return
 
@@ -137,15 +130,12 @@ class SingleLayerNetwork():
 		""" Implement SoftMax using equations 1 and 2.
 			Each column of X corresponds to an image and it has size d x n. """
 		s = np.dot(self.W, X) + self.b
-		# Element-wise multiplication: @
-		# s = (self.W @ X) + self.b
 		# p has size K x n, where n is n of the input X.
 		p = self.soft_max(s)
 		return p
 
 	def soft_max(self, s):
 		""" Standard definition of the softmax function """
-		# Note-to-self: Maybe change to identity matrix
 		return np.exp(s) / np.sum(np.exp(s), axis=0)
 
 	def compute_cost(self, X, Y, our_lambda):
@@ -277,7 +267,7 @@ def main():
 	seed = 12345
 	np.random.seed(seed)
 	test_numerically = False
-	our_lambda = 0
+	our_lambda = 1.0
 	n_batch = 100
 	eta = 0.001
 	n_epochs = 40
@@ -301,9 +291,9 @@ def main():
 
 	if test_numerically:
 		print()
-		print("-------------------- Running gradient tests --------------------")
-		num_images = 2
-		num_pixels = 100
+		print("-------------------- Running gradient tests ---------------------")
+		num_images = 100
+		num_pixels = 3072
 		test_train, test_val, test_test = dict(), dict(), dict()
 
 		test_train['X'] = train_set['X'][:num_images, :num_pixels]
@@ -331,8 +321,8 @@ def main():
 		# From the assignment PDF: "If all these absolutes difference are small
 		# (<1e-6), then they have produced the same result.
 		# np.allclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False)[source]
-		print(np.allclose(grad_W, grad_W_num, atol=1e-07))
-		print(grad_W - grad_W_num)
+		print()
+		print(f'All close: {np.allclose(grad_W, grad_W_num, atol=1e-05)}')
 
 	print()
 	print("---------------------- Learning classifier ----------------------")
@@ -357,7 +347,8 @@ def main():
 			   label_A='training loss', label_B='validation loss',
 			   xlabel='epoch', ylabel='loss', title=title)
 
-	montage(clf.W, title)
+	labels = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+	montage(clf.W, title, labels)
 
 	print()
 
