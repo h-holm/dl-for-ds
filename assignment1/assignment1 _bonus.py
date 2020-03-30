@@ -276,10 +276,46 @@ def main():
 
 	labels = unpickle(datasets_folder + "batches.meta")[b'label_names']
 
+	# Bonus a) use all available training data. Decrease valiation set to 1000.
+	X_train1, Y_train1, y_train1 = \
+	  load_batch("datasets/cifar-10-batches-py/data_batch_1")
+	X_train2, Y_train2, y_train2 = \
+	  load_batch("datasets/cifar-10-batches-py/data_batch_2")
+	X_train3, Y_train3, y_train3 = \
+	  load_batch("datasets/cifar-10-batches-py/data_batch_3")
+	X_train4, Y_train4, y_train4 = \
+	  load_batch("datasets/cifar-10-batches-py/data_batch_4")
+	X_train5, Y_train5, y_train5 = \
+	  load_batch("datasets/cifar-10-batches-py/data_batch_5")
+
+	X_train = np.concatenate((X_train1, X_train2, X_train3, X_train4, X_train5),
+	      axis=1)
+	Y_train = np.concatenate((Y_train1, Y_train2, Y_train3, Y_train4, Y_train5),
+	      axis=1)
+	y_train = np.concatenate((y_train1, y_train2, y_train3, y_train4, y_train5))
+	X_val = X_train[:, -1000:]
+	Y_val = Y_train[:, -1000:]
+	y_val = y_train[-1000:]
+	X_train = X_train[:, :-1000]
+	Y_train = Y_train[:, :-1000]
+	y_train = y_train[:-1000]
+
+
+	# Training with 1, validation with 2 and testing with test.
+	train_set_1 = load_dataset(datasets_folder, "data_batch_1", num_of_labels=len(labels))
+	train_set_2 = load_dataset(datasets_folder, "data_batch_2", num_of_labels=len(labels))
+	train_set_3 = load_dataset(datasets_folder, "data_batch_3", num_of_labels=len(labels))
+	train_set_4 = load_dataset(datasets_folder, "data_batch_4", num_of_labels=len(labels))
+	train_set_5 = load_dataset(datasets_folder, "data_batch_5", num_of_labels=len(labels))
+
+	test_set = load_dataset(datasets_folder, "data_batch_2", num_of_labels=len(labels))
+	val_set = load_dataset(datasets_folder, "test_batch", num_of_labels=len(labels))
+
 	# Training with 1, validation with 2 and testing with test.
 	train_set = load_dataset(datasets_folder, "data_batch_1", num_of_labels=len(labels))
-	val_set = load_dataset(datasets_folder, "data_batch_2", num_of_labels=len(labels))
-	test_set = load_dataset(datasets_folder, "test_batch", num_of_labels=len(labels))
+	test_set = load_dataset(datasets_folder, "data_batch_2", num_of_labels=len(labels))
+	val_set = load_dataset(datasets_folder, "test_batch", num_of_labels=len(labels))
+
 
 	datasets = {'train_set': train_set, 'test_set': test_set, 'val_set': val_set}
 	print()
