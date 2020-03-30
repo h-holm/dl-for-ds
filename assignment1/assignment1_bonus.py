@@ -110,19 +110,30 @@ def plot_lines(line_A, line_B, label_A, label_B, xlabel, ylabel, title):
 class SingleLayerNetwork():
 	""" Single-layer network classifier based on mini-batch gradient descent """
 
-	def __init__(self, labels, data):
+	def __init__(self, labels, data, decay_factor=1, xavier=False, SVM_loss=False):
 		""" W: weight matrix of size K x d
 			b: bias matrix of size K x 1 """
 		self.labels = labels
-		self.K = len(self.labels)
+		K = len(self.labels)
+
+		self.decay_factor = decay_factor
 
 		self.data = data
-		self.d = self.data['train_set']['X'].shape[0]
-		self.n = self.data['train_set']['X'].shape[1]
+		d = self.data['train_set']['X'].shape[0]
 
-		# Initialize as Gaussian random values with 0 mean and 0.01 stdev.
-		self.W = np.random.normal(0, 0.01, (self.K, self.d))
-		self.b = np.random.normal(0, 0.01, (self.K, 1))
+		self.SVM_loss = SVM_loss
+
+		# Bonus E) implement xavier initialization for weights.
+		if xavier:
+			# https://towardsdatascience.com/weight-initialization-in-neural-networks-a-journey-from-the-basics-to-kaiming-954fb9b47c79
+			# self.W = np.random.normal(0, np.sqrt(2 / (d + K)), (K, d))
+			# As per lecture 4.
+			self.W = np.random.normal(0, 1 / np.sqrt(d), (K, d))
+		else:
+			# Initialize as Gaussian random values with 0 mean and 0.01 stdev.
+			self.W = np.random.normal(0, 0.01, (K, d))
+
+		self.b = np.random.normal(0, 0.01, (K, 1))
 
 	def evaluate_classifier(self, X):
 		""" Implement SoftMax using equations 1 and 2.
@@ -159,7 +170,7 @@ class SingleLayerNetwork():
 
 		return count / N
 
-	def compute_gradients(self, X_batch, Y_batch, our_lambda):
+	def compute_gradients(self, X_batch, Y_batch, our_lambda, SVM=False):
 		""" Compute gradients of the weight and bias.
 			- X_batch is a D x N matrix
 			- Y_batch is a C x N one-hot-encoding vector
@@ -168,52 +179,36 @@ class SingleLayerNetwork():
 		N = X_batch.shape[1]
 		C = Y_batch.shape[0]
 
-		P_batch = self.evaluate_classifier(X_batch)
+		if self.SVM_loss:
+			grad_W = np.zeros((C, X_batch.shape[0]))
+			grad_b = np.zeros((C, 1))
+			for i in range(N):
+				x = X_batch[:, i]
+				y_int = np.where(Y_batch[:, [i]].T[0] == 1)[0][0]
+				s = np.dot(self.W, X_batch[:, [i]]) + self.b
+				for j in range(C):
+					if j != y_int:
+						if max(0, s[j] - s[y_int] + 1) != 0:
+							grad_W[j] += x
+							grad_W[y_int] -= x
+							grad_b[j, 0] += 1
+							grad_b[y_int, 0] -= 1
+			grad_W /= N
+			grad_W += (our_lambda * self.W)
+			grad_b /= N
+		else:
+			P_batch = self.evaluate_classifier(X_batch)
 
-		# As per the last slide of lecture 3.
-		G_batch = - (Y_batch - P_batch)
+			# As per the last slide of lecture 3.
+			G_batch = - (Y_batch - P_batch)
 
-		grad_W = (1 / N) * (G_batch @ X_batch.T) + (2 * our_lambda * self.W)
+			grad_W = (1 / N) * (G_batch @ X_batch.T) + (2 * our_lambda * self.W)
 
-		# No regularization term necessary.
-		grad_b = np.reshape((1 / N) * (G_batch @ np.ones(N)), (C, 1))
-
-		return grad_W, grad_b
-
-	def compute_gradients_num(self, X_batch, Y_batch, our_lambda=0, h=1e-6):
-		""" Compute gradients of the weight and bias numerically.
-			- X_batch is a D x N matrix.
-			- Y_batch is a C x N one-hot-encoding vector.
-			- our_lambda is the regularization term ("lambda" is reserved).
-			- h is a marginal offset.
-			Returns the gradients of the weight and bias. """
-
-		grad_W = np.zeros(self.W.shape)
-		grad_b = np.zeros(self.b.shape)
-
-		b_try = np.copy(self.b)
-		W_try = np.copy(self.W)
-
-		for i in range(len(self.b)):
-			self.b = b_try
-			self.b[i] -= h
-			c1 = self.compute_cost(X_batch, Y_batch, our_lambda)
-			self.b[i] += (2 * h)
-			c2 = self.compute_cost(X_batch, Y_batch, our_lambda)
-			grad_b[i] = (c2 - c1) / (2 * h)
-
-		# Given the shape of an array, an ndindex instance iterates over the
-		# N-dimensional index of the array. At each iteration a tuple of indices
-		# is returned, the last dimension is iterated over first.
-		for i in np.ndindex(self.W.shape):
-			self.W = W_try
-			self.W[i] -= h
-			c1 = self.compute_cost(X_batch, Y_batch, our_lambda)
-			self.W[i] += (2 * h)
-			c2 = self.compute_cost(X_batch, Y_batch, our_lambda)
-			grad_W[i] = (c2 - c1) / (2 * h)
+			# No regularization term necessary.
+			grad_b = np.reshape((1 / N) * (G_batch @ np.ones(N)), (C, 1))
 
 		return grad_W, grad_b
+
 
 	def mini_batch_gradient_descent(self, X, Y, our_lambda=0, n_batch=100,
 									eta=0.001, n_epochs=20, save_costs=False):
@@ -250,6 +245,10 @@ class SingleLayerNetwork():
 													self.data['val_set']['Y'],
 													our_lambda)
 
+			# Bonus B) implement a decay of the learning rate.
+			eta *= self.decay_factor
+			print(f'Current learning rate: {eta}')
+
 		accuracies['train'] = self.compute_accuracy(self.data['train_set']['X'],
 													self.data['train_set']['y'])
 		accuracies['val'] = self.compute_accuracy(self.data['val_set']['X'],
@@ -264,11 +263,23 @@ class SingleLayerNetwork():
 def main():
 	seed = 12345
 	np.random.seed(seed)
-	test_numerically = False
-	our_lambda = 1.0
-	n_batch = 100
-	eta = 0.001
+	our_lambda = 0.0
 	n_epochs = 40
+	n_batch = 100
+	eta = 0.1
+	decay_factor = 0.90
+	xavier = True
+	SVM_loss = True
+
+	if xavier:
+		xavier_str = 'T'
+	else:
+		xavier_str = 'F'
+
+	if SVM_loss:
+		SVM_str = 'T'
+	else:
+		SVM_str = 'F'
 
 	print()
 	print("------------------------ Loading dataset ------------------------")
@@ -276,46 +287,28 @@ def main():
 
 	labels = unpickle(datasets_folder + "batches.meta")[b'label_names']
 
-	# Bonus a) use all available training data. Decrease valiation set to 1000.
-	X_train1, Y_train1, y_train1 = \
-	  load_batch("datasets/cifar-10-batches-py/data_batch_1")
-	X_train2, Y_train2, y_train2 = \
-	  load_batch("datasets/cifar-10-batches-py/data_batch_2")
-	X_train3, Y_train3, y_train3 = \
-	  load_batch("datasets/cifar-10-batches-py/data_batch_3")
-	X_train4, Y_train4, y_train4 = \
-	  load_batch("datasets/cifar-10-batches-py/data_batch_4")
-	X_train5, Y_train5, y_train5 = \
-	  load_batch("datasets/cifar-10-batches-py/data_batch_5")
-
-	X_train = np.concatenate((X_train1, X_train2, X_train3, X_train4, X_train5),
-	      axis=1)
-	Y_train = np.concatenate((Y_train1, Y_train2, Y_train3, Y_train4, Y_train5),
-	      axis=1)
-	y_train = np.concatenate((y_train1, y_train2, y_train3, y_train4, y_train5))
-	X_val = X_train[:, -1000:]
-	Y_val = Y_train[:, -1000:]
-	y_val = y_train[-1000:]
-	X_train = X_train[:, :-1000]
-	Y_train = Y_train[:, :-1000]
-	y_train = y_train[:-1000]
-
-
-	# Training with 1, validation with 2 and testing with test.
+	# Bonus A) use all available data for training. Reduce validation to 1000.
 	train_set_1 = load_dataset(datasets_folder, "data_batch_1", num_of_labels=len(labels))
 	train_set_2 = load_dataset(datasets_folder, "data_batch_2", num_of_labels=len(labels))
 	train_set_3 = load_dataset(datasets_folder, "data_batch_3", num_of_labels=len(labels))
 	train_set_4 = load_dataset(datasets_folder, "data_batch_4", num_of_labels=len(labels))
 	train_set_5 = load_dataset(datasets_folder, "data_batch_5", num_of_labels=len(labels))
 
-	test_set = load_dataset(datasets_folder, "data_batch_2", num_of_labels=len(labels))
-	val_set = load_dataset(datasets_folder, "test_batch", num_of_labels=len(labels))
+	train_set = dict()
+	train_set['X'] = np.concatenate((train_set_1['X'], train_set_2['X'], train_set_3['X'], train_set_4['X'], train_set_5['X']), axis=1)
+	train_set['Y'] = np.concatenate((train_set_1['Y'], train_set_2['Y'], train_set_3['Y'], train_set_4['Y'], train_set_5['Y']), axis=1)
+	train_set['y'] = np.concatenate((train_set_1['y'], train_set_2['y'], train_set_3['y'], train_set_4['y'], train_set_5['y']))
 
-	# Training with 1, validation with 2 and testing with test.
-	train_set = load_dataset(datasets_folder, "data_batch_1", num_of_labels=len(labels))
-	test_set = load_dataset(datasets_folder, "data_batch_2", num_of_labels=len(labels))
-	val_set = load_dataset(datasets_folder, "test_batch", num_of_labels=len(labels))
+	train_set['X'] = train_set['X'][:, :-1000]
+	train_set['Y'] = train_set['Y'][:, :-1000]
+	train_set['y'] = train_set['y'][:-1000]
 
+	val_set = load_dataset(datasets_folder, "data_batch_5", num_of_labels=len(labels))
+	val_set['X'] = val_set['X'][:, :1000]
+	val_set['Y'] = val_set['Y'][:, :1000]
+	val_set['y'] = val_set['y'][:1000]
+
+	test_set = load_dataset(datasets_folder, "test_batch", num_of_labels=len(labels))
 
 	datasets = {'train_set': train_set, 'test_set': test_set, 'val_set': val_set}
 	print()
@@ -323,44 +316,11 @@ def main():
 	for dataset_name, dataset in datasets.items():
 		dataset['X'] = preprocess_dataset(dataset['X'])
 
-	if test_numerically:
-		print()
-		print("-------------------- Running gradient tests ---------------------")
-		num_images = 100
-		num_pixels = 3072
-		test_train, test_val, test_test = dict(), dict(), dict()
-
-		test_train['X'] = train_set['X'][:num_images, :num_pixels]
-		test_val['X'] = val_set['X'][:num_images, :num_pixels]
-		test_test['X'] = test_set['X'][:num_images, :num_pixels]
-
-		test_train['Y'] = train_set['Y'][:, :num_pixels]
-		test_val['Y'] = val_set['Y'][:, :num_pixels]
-		test_test['Y'] = test_set['Y'][:, :num_pixels]
-
-		test_train['y'] = train_set['y'][:num_pixels]
-		test_val['y'] = val_set['y'][:num_pixels]
-		test_test['y'] = test_set['y'][:num_pixels]
-
-		test_datasets = {'train_set': test_train, 'test_set': test_test, 'val_set': test_val}
-		clf = SingleLayerNetwork(labels, test_datasets)
-
-		grad_W, grad_b = clf.compute_gradients(test_datasets['train_set']['X'],
-											   test_datasets['train_set']['Y'],
-											   our_lambda=0)
-		grad_W_num, grad_b_num = clf.compute_gradients_num(test_datasets['train_set']['X'],
-														   test_datasets['train_set']['Y'],
-														   our_lambda=0)
-
-		# From the assignment PDF: "If all these absolutes difference are small
-		# (<1e-6), then they have produced the same result.
-		# np.allclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False)[source]
-		print()
-		print(f'All close: {np.allclose(grad_W, grad_W_num, atol=1e-05)}')
-
 	print()
 	print("---------------------- Learning classifier ----------------------")
-	clf = SingleLayerNetwork(labels, datasets)
+	clf = SingleLayerNetwork(labels, datasets, decay_factor=decay_factor,
+							 xavier=xavier, SVM_loss=SVM_loss)
+
 	accuracies, costs = clf.mini_batch_gradient_descent(datasets['train_set']['X'],
 														datasets['train_set']['Y'],
 														our_lambda=our_lambda,
@@ -368,6 +328,7 @@ def main():
 														eta=eta,
 														n_epochs=n_epochs,
 														save_costs=True)
+
 	print()
 	print(f'Training data accuracy:\t\t{accuracies["train"]}')
 	print(f'Validation data accuracy:\t{accuracies["val"]}')
@@ -376,7 +337,7 @@ def main():
 	tracc = accuracies["train"]
 	vacc = accuracies["val"]
 	teacc = accuracies["test"]
-	title = f'lambda{our_lambda}_n-batch{n_batch}_eta{eta}_n-epochs{n_epochs}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+	title = f'lambda{our_lambda}_n-batch{n_batch}_eta{eta}_n-epochs{n_epochs}_df-{decay_factor}_xavier-{xavier_str}_svm-{svm_str}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
 	plot_lines(line_A=costs['train'], line_B=costs['val'],
 			   label_A='training loss', label_B='validation loss',
 			   xlabel='epoch', ylabel='loss', title=title)
