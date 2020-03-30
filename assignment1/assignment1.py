@@ -8,7 +8,6 @@ an L2 regularization term on the weight matrix."""
 import pickle
 import matplotlib.pyplot as plt
 import numpy as np
-import re
 
 
 __author__ = "Henrik Holm"
@@ -30,7 +29,6 @@ def split_batch(batch, num_of_labels):
 	y: vector of length n containing label for each image, 0 to 9. """
 
 	X = (batch[b'data'] / 255).T # Normalize by dividing over 255.
-	# y = batch[b'labels']
 	y = np.asarray(batch[b'labels'])
 	Y = (np.eye(num_of_labels)[y]).T
 
