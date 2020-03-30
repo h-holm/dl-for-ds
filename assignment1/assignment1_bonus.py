@@ -145,7 +145,8 @@ class SingleLayerNetwork():
 
 	def soft_max(self, s):
 		""" Standard definition of the softmax function """
-		return np.exp(s) / np.sum(np.exp(s), axis=0)
+		# return np.exp(s) / np.sum(np.exp(s), axis=0)
+		return np.exp(s - np.max(s, axis=0)) / np.exp(s - np.max(s, axis=0)).sum(axis=0)
 
 	def compute_cost(self, X, Y, our_lambda):
 		""" Compute cost using the cross-entropy loss.
@@ -204,59 +205,15 @@ class SingleLayerNetwork():
 
 		N = X_batch.shape[1]
 
-		# s = self.evaluate_classifier(X_batch)
-		# sc = s.T[np.arange(s.shape[1]), np.argmax(Y_batch, axis=0)].T
-		# print(s.shape)
-		# print(sc.shape)
-		#
-		# margins = np.maximum(0, s - np.asarray(sc) + 1)
-		# print(margins.shape)
-		# margins.T[np.arange(N), np.argmax(Y_batch, axis=0)] = 0
-		# print(margins.shape)
-		#
-		# mcsvm_loss = Y_batch.shape[0] * np.mean(np.sum(margins, axis=1))
-		#
-		# cost = 1/N * mcsvm_loss + 0.5 * our_lambda * np.sum(self.W**2)
-		#
-		# binaries = margins
-		# binaries[margins > 0] = 1
-		# binaries_row_sum = np.sum(binaries, axis=0)
-		#
-		# print()
-		# print(np.arange(N).shape)
-		# print(binaries.T[np.arange(N), np.argmax(Y_batch, axis=0)].shape)
-		# print(binaries_row_sum.T.shape)
-		#
-		# binaries.T[np.arange(N), np.argmax(Y_batch, axis=0)] = -binaries_row_sum.T
-		# print(binaries.shape)
-		# print(binaries.T.shape)
-		#
-		# print(X_batch.T.shape)
-		# print(self.W.shape)
-		# grad_W = np.dot(binaries, X_batch.T) / N + our_lambda * self.W
-		# print(grad_W.shape)
-		#
-		# grad_b = np.reshape(np.sum(binaries, axis=1) / binaries.shape[1], self.b.shape)
-
-
 		loss = 0.0
 		grad_W = np.zeros(self.W.shape) # initialize the gradient as zero
 
-		# scores = X_batch.dot(self.W)
-		# yi_scores = scores[np.arange(scores.shape[0]),y] # http://stackoverflow.com/a/23435843/459241
 		scores = self.evaluate_classifier(X_batch)
-		print(scores.shape)
+		# http://stackoverflow.com/a/23435843/459241
 		yi_scores = scores.T[np.arange(scores.shape[1]), np.argmax(Y_batch, axis=0)].T
-		print(yi_scores.shape)
 
-		# margins = np.maximum(0, scores - np.matrix(yi_scores).T + 1)
 		margins = np.maximum(0, scores - np.asarray(yi_scores) + 1)
-		print(margins.shape)
-		# margins = np.maximum(0, scores - np.matrix(yi_scores) + 1)
-		# margins = np.maximum(0, scores - yi_scores + 1)
-		# margins[np.arange(N),Y_batch] = 0
 		margins.T[np.arange(N), np.argmax(Y_batch, axis=0)] = 0
-		print(margins.shape)
 
 		loss = np.mean(np.sum(margins, axis=1))
 		loss += 0.5 * our_lambda * np.sum(self.W * self.W)
@@ -264,27 +221,12 @@ class SingleLayerNetwork():
 
 		binary = margins
 		binary[margins > 0] = 1
-		# row_sum = np.sum(binary, axis=1)
 		row_sum = np.sum(binary, axis=0)
-		# binary[np.arange(N), Y_batch] = -row_sum.T
-		print(np.arange(N).shape)
-		print(binary.T[np.arange(N), np.argmax(Y_batch, axis=0)].shape)
-		print(row_sum.T.shape)
 		binary.T[np.arange(N), np.argmax(Y_batch, axis=0)] = -row_sum.T
 
-		print(binary.shape)
-		print(binary.T.shape)
-
-		print(X_batch.T.shape)
-		print(self.W.shape)
-
 		grad_W = np.dot(binary, X_batch.T) / N + our_lambda * self.W
-		# grad_W = (np.dot(X_batch.T, binary) / N) + (our_lambda * self.W)
-		print(grad_W.shape)
 
 		grad_b = np.reshape(np.sum(binary, axis=1) / binary.shape[1], self.b.shape)
-
-		quit()
 
 		return grad_W, grad_b
 
@@ -378,6 +320,7 @@ def main():
 	decay_factor = 0.90
 	xavier = True
 	SVM_loss = True
+	test_numerically = False
 
 	if xavier:
 		xavier_str = 'T'
@@ -423,6 +366,44 @@ def main():
 	print("----------------------- Preparing dataset -----------------------")
 	for dataset_name, dataset in datasets.items():
 		dataset['X'] = preprocess_dataset(dataset['X'])
+
+	if test_numerically:
+		print()
+		print("-------------------- Running gradient tests ---------------------")
+		num_images = 100
+		num_pixels = 3072
+		test_train, test_val, test_test = dict(), dict(), dict()
+
+		test_train['X'] = train_set['X'][:num_images, :num_pixels]
+		test_val['X'] = val_set['X'][:num_images, :num_pixels]
+		test_test['X'] = test_set['X'][:num_images, :num_pixels]
+
+		test_train['Y'] = train_set['Y'][:, :num_pixels]
+		test_val['Y'] = val_set['Y'][:, :num_pixels]
+		test_test['Y'] = test_set['Y'][:, :num_pixels]
+
+		test_train['y'] = train_set['y'][:num_pixels]
+		test_val['y'] = val_set['y'][:num_pixels]
+		test_test['y'] = test_set['y'][:num_pixels]
+
+		test_datasets = {'train_set': test_train, 'test_set': test_test, 'val_set': test_val}
+		clf = SingleLayerNetwork(labels, datasets, decay_factor=decay_factor,
+								 xavier=xavier, SVM_loss=SVM_loss)
+
+		grad_W, grad_b = clf.compute_gradients(test_datasets['train_set']['X'],
+											   test_datasets['train_set']['Y'],
+											   our_lambda=0)
+		grad_W_num, grad_b_num = clf.compute_gradients_num(test_datasets['train_set']['X'],
+														   test_datasets['train_set']['Y'],
+														   our_lambda=0)
+
+		# From the assignment PDF: "If all these absolutes difference are small
+		# (<1e-6), then they have produced the same result.
+		# np.allclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False)[source]
+		print()
+		print(grad_W)
+		print(grad_W_num)
+		print(f'All close: {np.allclose(grad_W, grad_W_num, atol=1e-05)}')
 
 	print()
 	print("---------------------- Learning classifier ----------------------")
