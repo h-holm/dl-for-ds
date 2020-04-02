@@ -115,7 +115,7 @@ def plot_lines(line_A, line_B, label_A, label_B, xlabel, ylabel, title):
 class SingleLayerNetwork():
 	""" Single-layer network classifier based on mini-batch gradient descent """
 
-	def __init__(self, labels, data, decay_factor=1, m=50):
+	def __init__(self, labels, data, decay_factor=1, m=50, verbose=False):
 		""" W: weight matrix of size K x d
 			b: bias matrix of size K x 1 """
 		self.labels = labels
@@ -127,32 +127,61 @@ class SingleLayerNetwork():
 		d = self.data['train_set']['X'].shape[0]
 
 		self.m = m
+		self.verbose = verbose
 
 		# Initialize as Gaussian random values with 0 mean and 1/sqrt(d) stdev.
-		self.W1 = np.random.normal(0, 1 / sqrt(d), (m, d))	# (m, d)
+		self.W1 = np.random.normal(0, 1 / np.sqrt(d), (m, d))	# (m, d)
 
 		# Initialize as Gaussian random values with 0 mean and 1/sqrt(m) stdev.
-		self.W2 = np.random.normal(0, 1 / sqrt(m), (K, m))	# (K, m)
+		self.W2 = np.random.normal(0, 1 / np.sqrt(m), (K, m))	# (K, m)
 
 		# "Set biases equal to zero"
-		self.b = np.zeros((m, 1))	# (m, 1)
-		self.b = np.zero((K, 1))	# (K, 1)
+		self.b1 = np.zeros((m, 1))	# (m, 1)
+		self.b2 = np.zeros((K, 1))	# (K, 1)
 
+		if self.verbose:
+			print()
+			print(f'Shape of W1:\t{self.W1.shape}')
+			print(f'Shape of W2:\t{self.W2.shape}')
+			print(f'Shape of b1:\t{self.b1.shape}')
+			print(f'Shape of b2:\t{self.b2.shape}')
 
-	def evaluate_classifier(self, X):
-		""" Implement SoftMax using equations 1 and 2.
-			Each column of X corresponds to an image and it has size d x n. """
-		s = np.dot(self.W, X) + self.b
-		# p has size K x n, where n is n of the input X.
-		p = self.soft_max(s)
-		return p
-
-	def soft_max(self, s):
+	def __soft_max(self, s):
 		""" Standard definition of the softmax function """
 		# return np.exp(s) / np.sum(np.exp(s), axis=0)
 		return np.exp(s - np.max(s, axis=0)) / np.exp(s - np.max(s, axis=0)).sum(axis=0)
 
-	def compute_cost(self, X, Y, our_lambda):
+	def __relu(self, s):
+		""" Standard definition of the softmax function """
+		# return np.exp(s) / np.sum(np.exp(s), axis=0)
+		# s[s<0] = 0
+		return np.maximum(s, 0)
+		# return s
+		# return np.exp(s - np.max(s, axis=0)) / np.exp(s - np.max(s, axis=0)).sum(axis=0)
+
+	def __evaluate_classifier(self, X):
+		""" Implement SoftMax using equations 1 and 2.
+			Each column of X corresponds to an image and it has size d x n. """
+		s1 = np.dot(self.W1, X) + self.b1
+		h = self.__relu(s1)
+
+		s2 = np.dot(self.W2, h) + self.b2
+		# p has size K x n, where n is n of the input X.
+		p = self.__soft_max(s2)
+
+		if self.verbose:
+			# print(f'\ns1:\n{s1}')
+			# print(f'\nh:\n{h}')
+			# print(f'\ns2:\n{s2}')
+			# print(f'\np:\n{p}')
+			print(f'\nShape of s1:\n{s1.shape}')
+			print(f'\nShape of h:\n{h.shape}')
+			print(f'\nShape of s2:\n{s2.shape}')
+			print(f'\nShape of p:\n{p.shape}')
+
+		return h, p
+
+	def __compute_cost(self, X, Y, our_lambda):
 		""" Compute cost using the cross-entropy loss.
 			- each column of X corresponds to an image and X has size d x N.
 			- Y corresponds to the one-hot ground truth label matrix.
@@ -166,7 +195,7 @@ class SingleLayerNetwork():
 
 		return cost
 
-	def compute_accuracy(self, X, y):
+	def __compute_accuracy(self, X, y):
 		""" Compute classification accuracy
 			- each column of X corresponds to an image and X has size d x N.
 			- y is a vector pf ground truth labels of length N
@@ -177,7 +206,7 @@ class SingleLayerNetwork():
 
 		return count / N
 
-	def compute_gradients_entropy_loss(self, X_batch, Y_batch, our_lambda):
+	def __compute_gradients(self, X_batch, Y_batch, our_lambda):
 		N = X_batch.shape[1]
 		C = Y_batch.shape[0]
 		P_batch = self.evaluate_classifier(X_batch)
@@ -191,17 +220,7 @@ class SingleLayerNetwork():
 
 		return grad_W, grad_b
 
-	def compute_gradients(self, X_batch, Y_batch, our_lambda):
-		""" Compute gradients of the weight and bias.
-			- X_batch is a D x N matrix
-			- Y_batch is a C x N one-hot-encoding vector
-			- our_lambda is the regularization term ("lambda" is reserved).
-			Returns the gradients of the weight and bias. """
-		grad_W, grad_b = self.compute_gradients_entropy_loss(X_batch, Y_batch, our_lambda)
-
-		return grad_W, grad_b
-
-	def compute_gradients_num(self, X_batch, Y_batch, our_lambda=0, h=1e-6):
+	def __compute_gradients_num(self, X_batch, Y_batch, our_lambda=0, h=1e-6):
 		""" Compute gradients of the weight and bias numerically.
 			- X_batch is a D x N matrix.
 			- Y_batch is a C x N one-hot-encoding vector.
@@ -236,8 +255,7 @@ class SingleLayerNetwork():
 
 		return grad_W, grad_b
 
-	def mini_batch_gradient_descent(self, X, Y, our_lambda=0, n_batch=100,
-									eta=0.001, n_epochs=20, save_costs=False):
+	def mini_batch_gradient_descent(self, X, Y, our_lambda=0, n_batch=100, eta=0.001, n_epochs=20, save_costs=False):
 		""" Learn the model by performing mini-batch gradient descent
 			n_batch is the number of batches
 			eta is the learning rate
@@ -261,26 +279,29 @@ class SingleLayerNetwork():
 				X_batch = X[:, j_start:j_end]
 				Y_batch = Y[:, j_start:j_end]
 
-				grad_W, grad_b = self.compute_gradients(X_batch, Y_batch, our_lambda)
-				self.W -= eta * grad_W
-				self.b -= eta * grad_b
+				self.__evaluate_classifier(X_batch)
+				quit()
 
-			if save_costs:
-				costs['train'][n] = self.compute_cost(X, Y, our_lambda)
-				costs['val'][n] = self.compute_cost(self.data['val_set']['X'],
-													self.data['val_set']['Y'],
-													our_lambda)
-
-			# Bonus B) implement a decay of the learning rate.
-			eta *= self.decay_factor
-			# print(f'Current learning rate: {eta}')
-
-		accuracies['train'] = self.compute_accuracy(self.data['train_set']['X'],
-													self.data['train_set']['y'])
-		accuracies['val'] = self.compute_accuracy(self.data['val_set']['X'],
-												  self.data['val_set']['y'])
-		accuracies['test'] = self.compute_accuracy(self.data['test_set']['X'],
-												   self.data['test_set']['y'])
+		# 		grad_W, grad_b = self.compute_gradients(X_batch, Y_batch, our_lambda)
+		# 		self.W -= eta * grad_W
+		# 		self.b -= eta * grad_b
+		#
+		# 	if save_costs:
+		# 		costs['train'][n] = self.compute_cost(X, Y, our_lambda)
+		# 		costs['val'][n] = self.compute_cost(self.data['val_set']['X'],
+		# 											self.data['val_set']['Y'],
+		# 											our_lambda)
+		#
+		# 	# Bonus B) implement a decay of the learning rate.
+		# 	eta *= self.decay_factor
+		# 	# print(f'Current learning rate: {eta}')
+		#
+		# accuracies['train'] = self.compute_accuracy(self.data['train_set']['X'],
+		# 											self.data['train_set']['y'])
+		# accuracies['val'] = self.compute_accuracy(self.data['val_set']['X'],
+		# 										  self.data['val_set']['y'])
+		# accuracies['test'] = self.compute_accuracy(self.data['test_set']['X'],
+		# 										   self.data['test_set']['y'])
 
 		return accuracies, costs
 
@@ -310,7 +331,7 @@ def main():
 	print()
 	print("---------------------- Normalizing dataset ----------------------")
 	for dataset_name, dataset in datasets.items():
-		dataset['X'] = normalize_dataset(dataset['X'], verbose=False)
+		dataset['X'] = normalize_dataset(dataset['X'], verbose=True)
 
 	if test_numerically:
 		print()
@@ -335,17 +356,20 @@ def main():
 		print(f'All close: {np.allclose(grad_W, grad_W_num, atol=1e-05)}')
 
 	print()
+	print("-------------------- Instantiating classifier -------------------")
+	clf = SingleLayerNetwork(labels, datasets, decay_factor=decay_factor, m=m,
+							 verbose=True)
+
+	print()
 	print("---------------------- Learning classifier ----------------------")
-	clf = SingleLayerNetwork(labels, datasets, decay_factor=decay_factor, m=m)
 
-
-	# accuracies, costs = clf.mini_batch_gradient_descent(datasets['train_set']['X'],
-	# 													datasets['train_set']['Y'],
-	# 													our_lambda=our_lambda,
-	# 													n_batch=n_batch,
-	# 													eta=eta,
-	# 													n_epochs=n_epochs,
-	# 													save_costs=True)
+	accuracies, costs = clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+														datasets['train_set']['Y'],
+														our_lambda=our_lambda,
+														n_batch=n_batch,
+														eta=eta,
+														n_epochs=n_epochs,
+														save_costs=True)
 	#
 	# print()
 	# print(f'Training data accuracy:\t\t{accuracies["train"]}')
