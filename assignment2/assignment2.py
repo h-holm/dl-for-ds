@@ -115,7 +115,7 @@ def plot_lines(line_A, line_B, label_A, label_B, xlabel, ylabel, title):
 class SingleLayerNetwork():
 	""" Single-layer network classifier based on mini-batch gradient descent """
 
-	def __init__(self, labels, data, decay_factor=1, m=50, verbose=False):
+	def __init__(self, labels, data, decay_factor=1, m=50, verbose=0):
 		""" W: weight matrix of size K x d
 			b: bias matrix of size K x 1 """
 		self.labels = labels
@@ -164,7 +164,7 @@ class SingleLayerNetwork():
 		s2 = np.dot(self.W2, h) + self.b2
 		p = self.__soft_max(s2)
 
-		if self.verbose:
+		if self.verbose > 1:
 			print()
 			print(f'Shape of s1:\t\t{s1.shape}')
 			print(f'Shape of h:\t\t{h.shape}')
@@ -180,12 +180,13 @@ class SingleLayerNetwork():
 			- our_lambda is the regularization term ("lambda" is reserved).
 			Returns the cost, which is a scalar. """
 		N = X.shape[1]
-		p = self.evaluate_classifier(X)
+		_, p = self.__evaluate_classifier(X)
 		# If label is encoded as one-hot repr., then cross entropy is -log(yTp).
-		reg = our_lambda * np.sum(self.W * self.W)
-		cost = ((1 / N) * -np.sum(Y * np.log(p))) + reg
+		loss = (1 / N) * (-np.sum(Y * np.log(p)))
+		reg = our_lambda * (np.sum(self.W1 * self.W1) + np.sum(self.W2 * self.W2))
+		cost = loss + reg
 
-		return cost
+		return loss, cost
 
 	def __compute_accuracy(self, X, y):
 		""" Compute classification accuracy
@@ -193,12 +194,12 @@ class SingleLayerNetwork():
 			- y is a vector pf ground truth labels of length N
 			Returns the accuracy. which is a scalar. """
 		N = X.shape[1]
-		highest_P = np.argmax(self.evaluate_classifier(X), axis=0)
+		highest_P = np.argmax(self.__evaluate_classifier(X), axis=0)
 		count = highest_P.T[highest_P == np.asarray(y)].shape[0]
 
 		return count / N
 
-	def __compute_gradients(self, X_batch, Y_batch, our_lambda):
+	def compute_gradients(self, X_batch, Y_batch, our_lambda):
 		N = X_batch.shape[1]
 		K = Y_batch.shape[0]
 
@@ -224,7 +225,7 @@ class SingleLayerNetwork():
 		grad_W1 = (1 / N) * np.dot(G_batch, X_batch.T) + (2 * our_lambda * self.W1)
 		grad_b1 = np.reshape((1 / N) * np.dot(G_batch, np.ones(N)), (self.m, 1))
 
-		if self.verbose:
+		if self.verbose > 1:
 			print()
 			print(f'shape of grad_W1:\t{grad_W1.shape}')
 			print(f'shape of grad_W2:\t{grad_W2.shape}')
@@ -233,7 +234,7 @@ class SingleLayerNetwork():
 
 		return grad_W1, grad_b1, grad_W2, grad_b2
 
-	def __compute_gradients_num(self, X_batch, Y_batch, our_lambda=0, h=1e-6):
+	def compute_gradients_num(self, X_batch, Y_batch, our_lambda=0, h=1e-6):
 		""" Compute gradients of the weight and bias numerically.
 			- X_batch is a D x N matrix.
 			- Y_batch is a C x N one-hot-encoding vector.
@@ -241,32 +242,41 @@ class SingleLayerNetwork():
 			- h is a marginal offset.
 			Returns the gradients of the weight and bias. """
 
-		# grad_W = np.zeros(self.W.shape)
-		# grad_b = np.zeros(self.b.shape)
+		bs, Ws = dict(), dict()
 
-		b_try = np.copy(self.b)
-		W_try = np.copy(self.W)
+		for i in range(1, 3):
+			b_string = 'b' + str(i)
+			W_string = 'W' + str(i)
 
-		for i in range(len(self.b)):
-			self.b = b_try
-			self.b[i] -= h
-			c1 = self.compute_cost(X_batch, Y_batch, our_lambda)
-			self.b[i] += (2 * h)
-			c2 = self.compute_cost(X_batch, Y_batch, our_lambda)
-			grad_b[i] = (c2 - c1) / (2 * h)
+			b = getattr(self, b_string)
+			W = getattr(self, W_string)
 
-		# Given the shape of an array, an ndindex instance iterates over the
-		# N-dimensional index of the array. At each iteration a tuple of indices
-		# is returned, the last dimension is iterated over first.
-		for i in np.ndindex(self.W.shape):
-			self.W = W_try
-			self.W[i] -= h
-			c1 = self.compute_cost(X_batch, Y_batch, our_lambda)
-			self.W[i] += (2 * h)
-			c2 = self.compute_cost(X_batch, Y_batch, our_lambda)
-			grad_W[i] = (c2 - c1) / (2 * h)
+			bs[b_string] = np.zeros(b.shape)
+			Ws[W_string] = np.zeros(W.shape)
 
-		return grad_W, grad_b
+			b_try = np.copy(b)
+			W_try = np.copy(W)
+
+			for j in range(len(b)):
+				b = b_try[:]
+				b[j] -= h
+				_, c1 = self.__compute_cost(X_batch, Y_batch, our_lambda)
+				getattr(self, b_string)[j] += (2 * h)
+				_, c2 = self.__compute_cost(X_batch, Y_batch, our_lambda)
+				bs[b_string][j] = (c2 - c1) / (2 * h)
+
+			# Given the shape of an array, an ndindex instance iterates over the
+			# N-dimensional index of the array. At each iteration a tuple of indices
+			# is returned, the last dimension is iterated over first.
+			for j in np.ndindex(W.shape):
+				self.W = W_try[:, :]
+				self.W[j] -= h
+				_, c1 = self.__compute_cost(X_batch, Y_batch, our_lambda)
+				getattr(self, W_string)[j] += (2 * h)
+				_, c2 = self.__compute_cost(X_batch, Y_batch, our_lambda)
+				Ws[W_string][j] = (c2 - c1) / (2 * h)
+
+		return Ws['W1'], bs['b1'], Ws['W2'], bs['b2']
 
 	def mini_batch_gradient_descent(self, X, Y, our_lambda=0, n_batch=100, eta=0.001, n_epochs=20, save_costs=False):
 		""" Learn the model by performing mini-batch gradient descent
@@ -293,7 +303,7 @@ class SingleLayerNetwork():
 				Y_batch = Y[:, j_start:j_end]
 
 				grad_W1, grad_b1, grad_W2, grad_b2 = \
-				self.__compute_gradients(X_batch, Y_batch, our_lambda)
+				self.compute_gradients(X_batch, Y_batch, our_lambda)
 				quit()
 		# 		self.W -= eta * grad_W
 		# 		self.b -= eta * grad_b
@@ -308,11 +318,11 @@ class SingleLayerNetwork():
 		# 	eta *= self.decay_factor
 		# 	# print(f'Current learning rate: {eta}')
 		#
-		# accuracies['train'] = self.compute_accuracy(self.data['train_set']['X'],
+		# accuracies['train'] = self.__compute_accuracy(self.data['train_set']['X'],
 		# 											self.data['train_set']['y'])
-		# accuracies['val'] = self.compute_accuracy(self.data['val_set']['X'],
+		# accuracies['val'] = self.__compute_accuracy(self.data['val_set']['X'],
 		# 										  self.data['val_set']['y'])
-		# accuracies['test'] = self.compute_accuracy(self.data['test_set']['X'],
+		# accuracies['test'] = self.__compute_accuracy(self.data['test_set']['X'],
 		# 										   self.data['test_set']['y'])
 
 		return accuracies, costs
@@ -326,8 +336,8 @@ def main():
 	n_batch = 100
 	eta = 0.1
 	decay_factor = 0.9
-	test_numerically = False
-	m = 50	# Number of nodes in the hidden layer
+	test_numerically = True
+	num_nodes = 50 # Number of nodes in the hidden layer
 
 	print()
 	print("------------------------ Loading dataset ------------------------")
@@ -343,7 +353,7 @@ def main():
 	print()
 	print("---------------------- Normalizing dataset ----------------------")
 	for dataset_name, dataset in datasets.items():
-		dataset['X'] = normalize_dataset(dataset['X'], verbose=True)
+		dataset['X'] = normalize_dataset(dataset['X'], verbose=1)
 
 	if test_numerically:
 		print()
@@ -354,34 +364,42 @@ def main():
 		X_batch = train_set['X'][:, :num_images]
 		Y_batch = train_set['Y'][:, :num_images]
 
-		clf = SingleLayerNetwork(labels, datasets, decay_factor=decay_factor, m=m)
+		clf = SingleLayerNetwork(labels, datasets, decay_factor=decay_factor,
+								 m=num_nodes, verbose=1)
 
-		grad_W, grad_b = clf.compute_gradients(X_batch, Y_batch, our_lambda=0)
-		grad_W_num, grad_b_num = clf.compute_gradients_num(X_batch, Y_batch, our_lambda=0)
+		grad_W1, grad_b1, grad_W2, grad_b2 = clf.compute_gradients(X_batch,
+																   Y_batch,
+																   our_lambda=0)
+
+		grad_W1_num, grad_b1_num, grad_W2_num, grad_b2_num = \
+		clf.compute_gradients_num(X_batch, Y_batch, our_lambda=0)
 
 		# From the assignment PDF: "If all these absolutes difference are small
 		# (<1e-6), then they have produced the same result.
 		# np.allclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False)[source]
 		print()
-		print(grad_W)
-		print(grad_W_num)
-		print(f'All close: {np.allclose(grad_W, grad_W_num, atol=1e-05)}')
+		print(grad_W1)
+		print(grad_W1_num)
+		print(grad_W2)
+		print(grad_W2_num)
+		print(f'All close: {np.allclose(grad_W1, grad_W1_num, atol=1e-03)}')
+		print(f'All close: {np.allclose(grad_W2, grad_W2_num, atol=1e-03)}')
 
 	print()
 	print("-------------------- Instantiating classifier -------------------")
-	clf = SingleLayerNetwork(labels, datasets, decay_factor=decay_factor, m=m,
-							 verbose=True)
+	clf = SingleLayerNetwork(labels, datasets, decay_factor=decay_factor,
+							 m=num_nodes, verbose=1)
 
 	print()
 	print("---------------------- Learning classifier ----------------------")
 
-	accuracies, costs = clf.mini_batch_gradient_descent(datasets['train_set']['X'],
-														datasets['train_set']['Y'],
-														our_lambda=our_lambda,
-														n_batch=n_batch,
-														eta=eta,
-														n_epochs=n_epochs,
-														save_costs=True)
+	# accuracies, costs = clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+	# 													datasets['train_set']['Y'],
+	# 													our_lambda=our_lambda,
+	# 													n_batch=n_batch,
+	# 													eta=eta,
+	# 													n_epochs=n_epochs,
+	# 													save_costs=True)
 	#
 	# print()
 	# print(f'Training data accuracy:\t\t{accuracies["train"]}')
