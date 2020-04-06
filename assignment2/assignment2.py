@@ -173,7 +173,7 @@ class SingleLayerNetwork():
 
 		return h, p
 
-	def __compute_cost(self, X, Y, our_lambda):
+	def __compute_loss_and_cost(self, X, Y, our_lambda):
 		""" Compute cost using the cross-entropy loss.
 			- each column of X corresponds to an image and X has size d x N.
 			- Y corresponds to the one-hot ground truth label matrix.
@@ -181,6 +181,7 @@ class SingleLayerNetwork():
 			Returns the cost, which is a scalar. """
 		N = X.shape[1]
 		_, p = self.__evaluate_classifier(X)
+
 		# If label is encoded as one-hot repr., then cross entropy is -log(yTp).
 		loss = (1 / N) * (-np.sum(Y * np.log(p)))
 		reg = our_lambda * (np.sum(self.W1 * self.W1) + np.sum(self.W2 * self.W2))
@@ -194,7 +195,7 @@ class SingleLayerNetwork():
 			- y is a vector pf ground truth labels of length N
 			Returns the accuracy. which is a scalar. """
 		N = X.shape[1]
-		highest_P = np.argmax(self.__evaluate_classifier(X), axis=0)
+		highest_P = np.argmax(self.__evaluate_classifier(X)[1], axis=0)
 		count = highest_P.T[highest_P == np.asarray(y)].shape[0]
 
 		return count / N
@@ -216,13 +217,14 @@ class SingleLayerNetwork():
 		# G_batch = self.W2.T@G_batch
 		G_batch = np.dot(self.W2.T, G_batch)
 		H_batch = np.maximum(H_batch, 0)
+		# H_batch[H_batch <= 0] = 0
 
 		# Indicator function on H_batch to yield only values larger than 0.
 		G_batch = np.multiply(G_batch, H_batch > 0)
 
 		# No need to multiply by 2
-		# grad_W1 = (1 / N) * np.dot(G_batch, X_batch.T) + (our_lambda * self.W1)
-		grad_W1 = (1 / N) * np.dot(G_batch, X_batch.T) + (2 * our_lambda * self.W1)
+		grad_W1 = (1 / N) * np.dot(G_batch, X_batch.T) + (our_lambda * self.W1)
+		# grad_W1 = (1 / N) * np.dot(G_batch, X_batch.T) + (2 * our_lambda * self.W1)
 		grad_b1 = np.reshape((1 / N) * np.dot(G_batch, np.ones(N)), (self.m, 1))
 
 		if self.verbose > 1:
@@ -234,7 +236,7 @@ class SingleLayerNetwork():
 
 		return grad_W1, grad_b1, grad_W2, grad_b2
 
-	def compute_gradients_num(self, X_batch, Y_batch, our_lambda=0, h=1e-6):
+	def compute_gradients_num(self, X_batch, Y_batch, our_lambda=0, h=1e-5):
 		""" Compute gradients of the weight and bias numerically.
 			- X_batch is a D x N matrix.
 			- Y_batch is a C x N one-hot-encoding vector.
@@ -260,9 +262,11 @@ class SingleLayerNetwork():
 			for j in range(len(b)):
 				b = b_try[:]
 				b[j] -= h
-				_, c1 = self.__compute_cost(X_batch, Y_batch, our_lambda)
+				# b[j] += h
+				_, c1 = self.__compute_loss_and_cost(X_batch, Y_batch, our_lambda)
 				getattr(self, b_string)[j] += (2 * h)
-				_, c2 = self.__compute_cost(X_batch, Y_batch, our_lambda)
+				# getattr(self, b_string)[j] -= (2 * h)
+				_, c2 = self.__compute_loss_and_cost(X_batch, Y_batch, our_lambda)
 				bs[b_string][j] = (c2 - c1) / (2 * h)
 
 			# Given the shape of an array, an ndindex instance iterates over the
@@ -271,9 +275,11 @@ class SingleLayerNetwork():
 			for j in np.ndindex(W.shape):
 				self.W = W_try[:, :]
 				self.W[j] -= h
-				_, c1 = self.__compute_cost(X_batch, Y_batch, our_lambda)
+				# self.W[j] += h
+				_, c1 = self.__compute_loss_and_cost(X_batch, Y_batch, our_lambda)
 				getattr(self, W_string)[j] += (2 * h)
-				_, c2 = self.__compute_cost(X_batch, Y_batch, our_lambda)
+				# getattr(self, W_string)[j] -= (2 * h)
+				_, c2 = self.__compute_loss_and_cost(X_batch, Y_batch, our_lambda)
 				Ws[W_string][j] = (c2 - c1) / (2 * h)
 
 		return Ws['W1'], bs['b1'], Ws['W2'], bs['b2']
@@ -285,45 +291,78 @@ class SingleLayerNetwork():
 			n_epochs is number of training epochs """
 
 		accuracies = dict()
+		accuracies['train'] = np.zeros(n_epochs)
+		accuracies['val'] = np.zeros(n_epochs)
+		accuracies['test'] = np.zeros(n_epochs)
+
+		print()
+		print(f'Accuracy training:\t{self.__compute_accuracy(self.data["train_set"]["X"], self.data["train_set"]["y"])}')
+		print(f'Accuracy validation:\t{self.__compute_accuracy(self.data["val_set"]["X"], self.data["val_set"]["y"])}')
+		print(f'Accuracy testing:\t{self.__compute_accuracy(self.data["test_set"]["X"], self.data["test_set"]["y"])}')
 
 		if save_costs:
-			costs = dict()
-			costs['train'] = np.zeros(n_epochs)
-			costs['val'] = np.zeros(n_epochs)
+			losses, costs = dict(), dict()
+			losses['train'], costs['train'] = np.zeros(n_epochs), np.zeros(n_epochs)
+			losses['val'], costs['val'] = np.zeros(n_epochs), np.zeros(n_epochs)
 		else:
-			costs = None
+			losses, costs = None, None
 
 		for n in range(n_epochs):
-			for j in range(n_batch):
+			for i in range(n_batch):
 				N = int(X.shape[1] / n_batch)
-				j_start = (j) * N
-				j_end = (j + 1) * N
+				i_start = (i) * N
+				i_end = (i + 1) * N
 
-				X_batch = X[:, j_start:j_end]
-				Y_batch = Y[:, j_start:j_end]
+				X_batch = X[:, i_start:i_end]
+				Y_batch = Y[:, i_start:i_end]
 
 				grad_W1, grad_b1, grad_W2, grad_b2 = \
 				self.compute_gradients(X_batch, Y_batch, our_lambda)
-				quit()
-		# 		self.W -= eta * grad_W
-		# 		self.b -= eta * grad_b
-		#
-		# 	if save_costs:
-		# 		costs['train'][n] = self.compute_cost(X, Y, our_lambda)
-		# 		costs['val'][n] = self.compute_cost(self.data['val_set']['X'],
-		# 											self.data['val_set']['Y'],
-		# 											our_lambda)
-		#
-		# 	# Bonus B) implement a decay of the learning rate.
-		# 	eta *= self.decay_factor
-		# 	# print(f'Current learning rate: {eta}')
-		#
+
+				self.W1 -= eta * grad_W1
+				self.b1 -= eta * grad_b1
+				self.W2 -= eta * grad_W2
+				self.b2 -= eta * grad_b2
+
+			if save_costs:
+				losses['train'][n], costs['train'][n] = \
+				self.__compute_loss_and_cost(X, Y, our_lambda)
+
+				losses['val'][n], costs['val'][n] = \
+				self.__compute_loss_and_cost(self.data['val_set']['X'],
+											 self.data['val_set']['Y'],
+											 our_lambda)
+
+				# print()
+				# print(f'cost training:\t\t{costs["train"][n]}')
+				# print(f'cost validation:\t{costs["val"][n]}')
+
+			# acc_train[n] = self.compute_accuracy(self.X_train, self.y_train)
+			# print(acc_train[n])
+			# acc_val[n] = self.compute_accuracy(self.X_val, self.y_val)
+			accuracies['train'][n] = self.__compute_accuracy(self.data['train_set']['X'],
+															 self.data['train_set']['y'])
+			accuracies['val'][n] = self.__compute_accuracy(self.data['val_set']['X'],
+														   self.data['val_set']['y'])
+			accuracies['test'][n] = self.__compute_accuracy(self.data['test_set']['X'],
+															self.data['test_set']['y'])
+			print()
+			print(f'Accuracy training:\t{accuracies["train"][n]}')
+			print(f'Accuracy validation:\t{accuracies["val"][n]}')
+			# print(f'Accuracy testing:\t{accuracies["test"][n]}')
+
+			# Bonus B) implement a decay of the learning rate.
+			eta *= self.decay_factor
+			# print(f'Current learning rate: {eta}')
+
 		# accuracies['train'] = self.__compute_accuracy(self.data['train_set']['X'],
 		# 											self.data['train_set']['y'])
 		# accuracies['val'] = self.__compute_accuracy(self.data['val_set']['X'],
 		# 										  self.data['val_set']['y'])
 		# accuracies['test'] = self.__compute_accuracy(self.data['test_set']['X'],
 		# 										   self.data['test_set']['y'])
+
+		# print(accuracies['train'])
 
 		return accuracies, costs
 
@@ -332,11 +371,12 @@ def main():
 	seed = 12345
 	np.random.seed(seed)
 	our_lambda = 0.0
-	n_epochs = 60
+	# n_epochs = 60
+	n_epochs = 100
 	n_batch = 100
 	eta = 0.1
-	decay_factor = 0.9
-	test_numerically = True
+	decay_factor = 1.0
+	test_numerically = False
 	num_nodes = 50 # Number of nodes in the hidden layer
 
 	print()
@@ -358,11 +398,14 @@ def main():
 	if test_numerically:
 		print()
 		print("-------------------- Running gradient tests ---------------------")
-		num_images = 100
-		num_pixels = 3072
+		num_pixels = 20
+		num_images = 10
 
-		X_batch = train_set['X'][:, :num_images]
-		Y_batch = train_set['Y'][:, :num_images]
+		train_set['X'] = train_set['X'][:num_pixels, :num_images]
+		train_set['Y'] = train_set['Y'][:num_pixels, :num_images]
+
+		X_batch = train_set['X']
+		Y_batch = train_set['Y']
 
 		clf = SingleLayerNetwork(labels, datasets, decay_factor=decay_factor,
 								 m=num_nodes, verbose=1)
@@ -378,12 +421,20 @@ def main():
 		# (<1e-6), then they have produced the same result.
 		# np.allclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False)[source]
 		print()
+		print('grad_W1')
 		print(grad_W1)
+		print('grad_W1_num')
 		print(grad_W1_num)
-		print(grad_W2)
-		print(grad_W2_num)
-		print(f'All close: {np.allclose(grad_W1, grad_W1_num, atol=1e-03)}')
-		print(f'All close: {np.allclose(grad_W2, grad_W2_num, atol=1e-03)}')
+		print()
+		print('grad_W2')
+		print(grad_W2[:5, :20])
+		print('grad_W2_num')
+		print(grad_W2_num[:5, :20])
+		print()
+		print(f'All close: {np.allclose(grad_W1, grad_W1_num, atol=1e-04)}')
+		print(f'All close: {np.allclose(grad_W2, grad_W2_num, atol=1e-04)}')
+		# WRITE: With atol 1e-04 we get all to be close.
+		quit()
 
 	print()
 	print("-------------------- Instantiating classifier -------------------")
@@ -392,30 +443,39 @@ def main():
 
 	print()
 	print("---------------------- Learning classifier ----------------------")
+	# Sanity check
+	# num_pixels = 3072
+	# num_images = 100
+	#
+	# train_set['X'] = train_set['X'][:num_pixels, :num_images]
+	# train_set['Y'] = train_set['Y'][:num_pixels, :num_images]
 
-	# accuracies, costs = clf.mini_batch_gradient_descent(datasets['train_set']['X'],
-	# 													datasets['train_set']['Y'],
-	# 													our_lambda=our_lambda,
-	# 													n_batch=n_batch,
-	# 													eta=eta,
-	# 													n_epochs=n_epochs,
-	# 													save_costs=True)
-	#
-	# print()
-	# print(f'Training data accuracy:\t\t{accuracies["train"]}')
-	# print(f'Validation data accuracy:\t{accuracies["val"]}')
-	# print(f'Test data accuracy:\t\t{accuracies["test"]}')
-	#
-	# tracc = accuracies["train"]
-	# vacc = accuracies["val"]
-	# teacc = accuracies["test"]
-	# title = f'lambda{our_lambda}_n-batch{n_batch}_eta{eta}_n-epochs{n_epochs}_df-{decay_factor}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
-	# plot_lines(line_A=costs['train'], line_B=costs['val'],
-	# 		   label_A='training loss', label_B='validation loss',
-	# 		   xlabel='epoch', ylabel='loss', title=title)
-	#
-	# labels = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
-	# montage(clf.W, title, labels)
+
+	accuracies, costs = clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+														datasets['train_set']['Y'],
+														our_lambda=our_lambda,
+														n_batch=n_batch,
+														eta=eta,
+														n_epochs=n_epochs,
+														save_costs=True)
+
+
+	tracc = accuracies["train"][-1]
+	vacc = accuracies["val"][-1]
+	teacc = accuracies["test"][-1]
+
+	print()
+	print(f'Final training data accuracy:\t\t{tracc}')
+	print(f'Final validation data accuracy:\t\t{vacc}')
+	print(f'Final test data accuracy:\t\t{teacc}')
+
+	title = f'lambda{our_lambda}_n-batch{n_batch}_eta{eta}_n-epochs{n_epochs}_df-{decay_factor}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+	plot_lines(line_A=costs['train'], line_B=costs['val'],
+			   label_A='training loss', label_B='validation loss',
+			   xlabel='epoch', ylabel='loss', title=title)
+
+	labels = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+	montage(clf.W1, title, labels)
 
 	print()
 
