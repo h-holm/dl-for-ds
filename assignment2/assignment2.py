@@ -93,15 +93,15 @@ def montage(W, title, labels):
 def plot_lines(line_A, line_B, label_A, label_B, xlabel, ylabel, title):
    """ Plots performance curves """
    assert(line_A.shape == line_B.shape)
-
-   N = len(line_A)
+   # N = len(line_A)
 
    fig, ax = plt.subplots(figsize=(10, 8))
-   ax.plot(range(N), line_A, label=label_A)
-   ax.plot(range(N), line_B, label=label_B)
+   # ax.plot(range(N), line_A, label=label_A)
+   # ax.plot(range(N), line_B, label=label_B)
+   ax.plot(range(len(line_A)), line_A, label=label_A)
+   ax.plot(range(len(line_B)), line_B, label=label_B)
    ax.legend()
-
-   plt.xticks(range(N))
+   # plt.xticks(range(N))
 
    ax.set(xlabel=xlabel, ylabel=ylabel)
    ax.grid()
@@ -333,38 +333,28 @@ class SingleLayerNetwork():
 											 self.data['val_set']['Y'],
 											 our_lambda)
 
-				# print()
-				# print(f'cost training:\t\t{costs["train"][n]}')
-				# print(f'cost validation:\t{costs["val"][n]}')
-
-			# acc_train[n] = self.compute_accuracy(self.X_train, self.y_train)
-			# print(acc_train[n])
-			# acc_val[n] = self.compute_accuracy(self.X_val, self.y_val)
 			accuracies['train'][n] = self.__compute_accuracy(self.data['train_set']['X'],
 															 self.data['train_set']['y'])
 			accuracies['val'][n] = self.__compute_accuracy(self.data['val_set']['X'],
 														   self.data['val_set']['y'])
 			accuracies['test'][n] = self.__compute_accuracy(self.data['test_set']['X'],
 															self.data['test_set']['y'])
-			print()
-			print(f'Accuracy training:\t{accuracies["train"][n]}')
-			print(f'Accuracy validation:\t{accuracies["val"][n]}')
-			# print(f'Accuracy testing:\t{accuracies["test"][n]}')
+
+			if self.verbose:
+				print()
+				# print(f'Cost training:\t\t{round(costs["train"][n], 2)}')
+				# print(f'Cost validation:\t{round(costs["val"][n], 2)}')
+				print(f'Loss training:\t\t{round(losses["train"][n], 2)}')
+				print(f'Loss validation:\t{round(losses["val"][n], 2)}')
+				# print(f'Accuracy training:\t{round(accuracies["train"][n], 2)}')
+				# print(f'Accuracy validation:\t{round(accuracies["val"][n], 2)}')
+				# print(f'Accuracy testing:\t{accuracies["test"][n]}')
 
 			# Bonus B) implement a decay of the learning rate.
 			eta *= self.decay_factor
 			# print(f'Current learning rate: {eta}')
 
-		# accuracies['train'] = self.__compute_accuracy(self.data['train_set']['X'],
-		# 											self.data['train_set']['y'])
-		# accuracies['val'] = self.__compute_accuracy(self.data['val_set']['X'],
-		# 										  self.data['val_set']['y'])
-		# accuracies['test'] = self.__compute_accuracy(self.data['test_set']['X'],
-		# 										   self.data['test_set']['y'])
-
-		# print(accuracies['train'])
-
-		return accuracies, costs
+		return accuracies, costs, losses
 
 
 def main():
@@ -372,9 +362,9 @@ def main():
 	np.random.seed(seed)
 	our_lambda = 0.0
 	# n_epochs = 60
-	n_epochs = 100
+	n_epochs = 40
 	n_batch = 100
-	eta = 0.1
+	eta = 0.001
 	decay_factor = 1.0
 	test_numerically = False
 	num_nodes = 50 # Number of nodes in the hidden layer
@@ -451,13 +441,14 @@ def main():
 	# train_set['Y'] = train_set['Y'][:num_pixels, :num_images]
 
 
-	accuracies, costs = clf.mini_batch_gradient_descent(datasets['train_set']['X'],
-														datasets['train_set']['Y'],
-														our_lambda=our_lambda,
-														n_batch=n_batch,
-														eta=eta,
-														n_epochs=n_epochs,
-														save_costs=True)
+	accuracies, costs, losses = \
+	clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+									datasets['train_set']['Y'],
+									our_lambda=our_lambda,
+									n_batch=n_batch,
+									eta=eta,
+									n_epochs=n_epochs,
+									save_costs=True)
 
 
 	tracc = accuracies["train"][-1]
@@ -470,9 +461,18 @@ def main():
 	print(f'Final test data accuracy:\t\t{teacc}')
 
 	title = f'lambda{our_lambda}_n-batch{n_batch}_eta{eta}_n-epochs{n_epochs}_df-{decay_factor}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+
 	plot_lines(line_A=costs['train'], line_B=costs['val'],
+			   label_A='training cost', label_B='validation cos',
+			   xlabel='epoch', ylabel='cost', title='cost_' + title)
+
+	plot_lines(line_A=losses['train'], line_B=losses['val'],
 			   label_A='training loss', label_B='validation loss',
-			   xlabel='epoch', ylabel='loss', title=title)
+			   xlabel='epoch', ylabel='loss', title='loss_' + title)
+
+	plot_lines(line_A=accuracies['train'], line_B=accuracies['val'],
+			   label_A='training accuracy', label_B='validation accuracy',
+			   xlabel='epoch', ylabel='accuracy', title='acc_' + title)
 
 	labels = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
 	montage(clf.W1, title, labels)
