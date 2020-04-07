@@ -139,27 +139,9 @@ def plot_three_subplots(costs, losses, accuracies, title):
 	ax_accuracies.set(xlabel=xlabel, ylabel='accuracy')
 	ax_accuracies.grid()
 
-	# fig.set_figwidth(10)
-
-
 	plt.savefig(f'plots/{title}.png', bbox_inches="tight")
 
 	plt.show()
-
-	# cost_plot = plot_lines(line_A=costs['train'], line_B=costs['val'],
-	# 					   label_A='training cost', label_B='validation cost',
-	# 					   xlabel='epoch', ylabel='cost',
-	# 					   title='fig3_cost_' + title, show=False)
-	#
-	# loss_plot = plot_lines(line_A=losses['train'], line_B=losses['val'],
-	# 					   label_A='training loss', label_B='validation loss',
-	# 					   xlabel='epoch', ylabel='loss',
-	# 					   title='fig3_loss_' + title, show=False)
-	#
-	# accu_plot = plot_lines(line_A=accuracies['train'], line_B=accuracies['val'],
-	# 					   label_A='training accuracy', label_B='validation accuracy',
-	# 					   xlabel='epoch', ylabel='accuracy',
-	# 					   title='fig3_acc_' + title, show=False)
 
 	return
 
@@ -424,8 +406,8 @@ def main():
 	np.random.seed(seed)
 	test_numerically = False
 	sanity_check = False # Deprecated
-	fig_3 = True
-	fig_4 = False
+	fig_3 = False
+	fig_4 = True
 
 	print()
 	print("------------------------ Loading dataset ------------------------")
@@ -553,7 +535,7 @@ def main():
 		plot_three_subplots(costs=(costs['train'], costs['val']),
 							losses=(losses['train'], losses['val']),
 							accuracies=(accuracies['train'], accuracies['val']),
-							title='fig3_'+title)
+							title='fig3_' + title)
 
 	if fig_4:
 		print()
@@ -590,17 +572,22 @@ def main():
 
 		title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
 
-		plot_lines(line_A=costs['train'], line_B=costs['val'],
-				   label_A='training cost', label_B='validation cos',
-				   xlabel='epoch', ylabel='cost', title='fig3_cost_' + title)
-
-		plot_lines(line_A=losses['train'], line_B=losses['val'],
-				   label_A='training loss', label_B='validation loss',
-				   xlabel='epoch', ylabel='loss', title='fig3_loss_' + title)
-
-		plot_lines(line_A=accuracies['train'], line_B=accuracies['val'],
-				   label_A='training accuracy', label_B='validation accuracy',
-				   xlabel='epoch', ylabel='accuracy', title='fig3_acc_' + title)
+		# plot_lines(line_A=costs['train'], line_B=costs['val'],
+		# 		   label_A='training cost', label_B='validation cos',
+		# 		   xlabel='epoch', ylabel='cost', title='fig3_cost_' + title)
+		#
+		# plot_lines(line_A=losses['train'], line_B=losses['val'],
+		# 		   label_A='training loss', label_B='validation loss',
+		# 		   xlabel='epoch', ylabel='loss', title='fig3_loss_' + title)
+		#
+		# plot_lines(line_A=accuracies['train'], line_B=accuracies['val'],
+		# 		   label_A='training accuracy', label_B='validation accuracy',
+		# 		   xlabel='epoch', ylabel='accuracy', title='fig3_acc_' + title)
+		#
+		plot_three_subplots(costs=(costs['train'], costs['val']),
+							losses=(losses['train'], losses['val']),
+							accuracies=(accuracies['train'], accuracies['val']),
+							title='fig4_' + title)
 
 	print()
 
