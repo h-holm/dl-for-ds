@@ -318,11 +318,14 @@ class SingleLayerNetwork():
 
 	def mini_batch_gradient_descent(self, X, Y, our_lambda=0, n_batch=100,
 									eta_min=1e-5, eta_max=1e-1, n_s=500,
-									n_epochs=20, save_costs=False):
+									n_epochs=20):
 		""" Learn the model by performing mini-batch gradient descent
-			n_batch is the number of batches
-			eta is the learning rate
-			n_epochs is number of training epochs """
+			our_lambda 	- regularization term
+			batch_size 	- number of examples per mini-batch
+			eta_min		- minimum learning rate
+			eta_max		- maximum learning rate
+			n_s			- step size
+			n_epochs 	- number of runs through the whole training set """
 
 		accuracies = dict()
 		accuracies['train'] = np.zeros(n_epochs)
@@ -330,20 +333,17 @@ class SingleLayerNetwork():
 		accuracies['test'] = np.zeros(n_epochs)
 
 		print()
-		print(f'Accuracy training:\t{self.__compute_accuracy(self.data["train_set"]["X"], self.data["train_set"]["y"])}')
-		print(f'Accuracy validation:\t{self.__compute_accuracy(self.data["val_set"]["X"], self.data["val_set"]["y"])}')
-		print(f'Accuracy testing:\t{self.__compute_accuracy(self.data["test_set"]["X"], self.data["test_set"]["y"])}')
+		print(f'Accuracy training:\t{round(self.__compute_accuracy(self.data["train_set"]["X"], self.data["train_set"]["y"]), 4)}')
+		print(f'Accuracy validation:\t{round(self.__compute_accuracy(self.data["val_set"]["X"], self.data["val_set"]["y"]), 4)}')
+		# print(f'Accuracy testing:\t{round(self.__compute_accuracy(self.data["test_set"]["X"], self.data["test_set"]["y"]), 4)}')
 
-		if save_costs:
-			losses, costs = dict(), dict()
-			losses['train'], costs['train'] = np.zeros(n_epochs), np.zeros(n_epochs)
-			losses['val'], costs['val'] = np.zeros(n_epochs), np.zeros(n_epochs)
-		else:
-			losses, costs = None, None
+		losses, costs = dict(), dict()
+		losses['train'], costs['train'] = np.zeros(n_epochs), np.zeros(n_epochs)
+		losses['val'], costs['val'] = np.zeros(n_epochs), np.zeros(n_epochs)
 
 		eta = eta_min
-		t = 0
 
+		t = 0
 		for n in range(n_epochs):
 			for i in range(n_batch):
 				N = int(X.shape[1] / n_batch)
@@ -361,39 +361,36 @@ class SingleLayerNetwork():
 				self.W2 -= eta * grad_W2
 				self.b2 -= eta * grad_b2
 
+				# Equations (14) and (15).
 				if t <= n_s:
 					eta = eta_min + ((t / n_s) * (eta_max - eta_min))
 				elif t <= (2 * n_s):
 					eta = eta_max - (((t - n_s) / n_s) * (eta_max - eta_min))
 				t = (t + 1) % (2 * n_s)
 
-				# if t == (2 * n_s):
-				# 	break
+			losses['train'][n], costs['train'][n] = \
+			self.__compute_loss_and_cost(X, Y, our_lambda)
 
-			if save_costs:
-				losses['train'][n], costs['train'][n] = \
-				self.__compute_loss_and_cost(X, Y, our_lambda)
-
-				losses['val'][n], costs['val'][n] = \
-				self.__compute_loss_and_cost(self.data['val_set']['X'],
-											 self.data['val_set']['Y'],
-											 our_lambda)
+			losses['val'][n], costs['val'][n] = \
+			self.__compute_loss_and_cost(self.data['val_set']['X'],
+										 self.data['val_set']['Y'],
+										 our_lambda)
 
 			accuracies['train'][n] = self.__compute_accuracy(self.data['train_set']['X'],
 															 self.data['train_set']['y'])
 			accuracies['val'][n] = self.__compute_accuracy(self.data['val_set']['X'],
 														   self.data['val_set']['y'])
-			accuracies['test'][n] = self.__compute_accuracy(self.data['test_set']['X'],
-															self.data['test_set']['y'])
+			# accuracies['test'][n] = self.__compute_accuracy(self.data['test_set']['X'],
+			# 												self.data['test_set']['y'])
 
 			if self.verbose:
 				print()
-				print(f'Loss training:\t\t{round(losses["train"][n], 2)}')
-				print(f'Cost training:\t\t{round(costs["train"][n], 2)}')
-				print(f'Loss validation:\t{round(losses["val"][n], 2)}')
-				print(f'Cost validation:\t{round(costs["val"][n], 2)}')
-				print(f'Accuracy training:\t{round(accuracies["train"][n], 2)}')
-				print(f'Accuracy validation:\t{round(accuracies["val"][n], 2)}')
+				print(f'Loss training:\t\t{round(losses["train"][n], 4)}')
+				print(f'Cost training:\t\t{round(costs["train"][n], 4)}')
+				print(f'Loss validation:\t{round(losses["val"][n], 4)}')
+				print(f'Cost validation:\t{round(costs["val"][n], 4)}')
+				print(f'Accuracy training:\t{round(accuracies["train"][n], 4)}')
+				print(f'Accuracy validation:\t{round(accuracies["val"][n], 4)}')
 				# print(f'Accuracy testing:\t{accuracies["test"][n]}')
 
 			# print(f'Current learning rate: {eta}')
@@ -550,19 +547,18 @@ def main():
 										eta_min=eta_min,
 										eta_max=eta_max,
 										n_s=n_s,
-										n_epochs=n_epochs,
-										save_costs=True)
+										n_epochs=n_epochs)
 
-		tracc = accuracies["train"][-1]
-		vacc = accuracies["val"][-1]
-		teacc = accuracies["test"][-1]
+		tracc = round(accuracies["train"][-1], 4)
+		vacc = round(accuracies["val"][-1], 4)
+		teacc = round(accuracies["test"][-1], 4)
 
 		print()
 		print(f'Final training data accuracy:\t\t{tracc}')
 		print(f'Final validation data accuracy:\t\t{vacc}')
 		print(f'Final test data accuracy:\t\t{teacc}')
 
-		title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+		title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_n-s{n_s}_m{num_nodes}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
 
 		plot_three_subplots(costs=(costs['train'], costs['val']),
 							losses=(losses['train'], losses['val']),
@@ -590,41 +586,67 @@ def main():
 										eta_min=eta_min,
 										eta_max=eta_max,
 										n_s=n_s,
-										n_epochs=n_epochs,
-										save_costs=True)
+										n_epochs=n_epochs)
 
-		tracc = accuracies["train"][-1]
-		vacc = accuracies["val"][-1]
-		teacc = accuracies["test"][-1]
+		tracc = round(accuracies["train"][-1], 4)
+		vacc = round(accuracies["val"][-1], 4)
+		teacc = round(accuracies["test"][-1], 4)
 
 		print()
 		print(f'Final training data accuracy:\t\t{tracc}')
 		print(f'Final validation data accuracy:\t\t{vacc}')
 		print(f'Final test data accuracy:\t\t{teacc}')
 
-		title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+		title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_n-s{n_s}_m{num_nodes}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
 
-		# plot_lines(line_A=costs['train'], line_B=costs['val'],
-		# 		   label_A='training cost', label_B='validation cos',
-		# 		   xlabel='epoch', ylabel='cost', title='fig3_cost_' + title)
-		#
-		# plot_lines(line_A=losses['train'], line_B=losses['val'],
-		# 		   label_A='training loss', label_B='validation loss',
-		# 		   xlabel='epoch', ylabel='loss', title='fig3_loss_' + title)
-		#
-		# plot_lines(line_A=accuracies['train'], line_B=accuracies['val'],
-		# 		   label_A='training accuracy', label_B='validation accuracy',
-		# 		   xlabel='epoch', ylabel='accuracy', title='fig3_acc_' + title)
-		#
 		plot_three_subplots(costs=(costs['train'], costs['val']),
 							losses=(losses['train'], losses['val']),
 							accuracies=(accuracies['train'], accuracies['val']),
 							title='fig4_' + title)
 
 	if exercise_4:
-		pass
+		print()
+		print("------------------------- Exercise 4 -------------------------")
+		# no need to change mbgd for lambda search.
+		our_lambda = 0.01
+		n_batch = 100
+		eta_min = 1e-5
+		eta_max = 1e-1
+		num_nodes = 50 # Number of nodes in the hidden layer
 
+		# As per Assignment PDF.
+		n_s = 2 * int(np.floor(datasets['train_set']['X'].shape[1] / n_batch))
 
+		# Number of epochs set to equal two cycles.
+		n_epochs = int(4 * (n_s / n_batch))
+
+		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
+
+		accuracies, costs, losses = \
+		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+										datasets['train_set']['Y'],
+										our_lambda=our_lambda,
+										n_batch=n_batch,
+										eta_min=eta_min,
+										eta_max=eta_max,
+										n_s=n_s,
+										n_epochs=n_epochs)
+
+		tracc = round(accuracies["train"][-1], 4)
+		vacc = round(accuracies["val"][-1], 4)
+		teacc = round(accuracies["test"][-1], 4)
+
+		print()
+		print(f'Final training data accuracy:\t\t{tracc}')
+		print(f'Final validation data accuracy:\t\t{vacc}')
+		print(f'Final test data accuracy:\t\t{teacc}')
+
+		title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_n-s{n_s}_m{num_nodes}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+
+		plot_three_subplots(costs=(costs['train'], costs['val']),
+							losses=(losses['train'], losses['val']),
+							accuracies=(accuracies['train'], accuracies['val']),
+							title='ex4_' + title)
 	print()
 
 	return
