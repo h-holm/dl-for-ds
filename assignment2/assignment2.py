@@ -90,38 +90,88 @@ def montage(W, title, labels):
 	return
 
 
-def plot_lines(line_A, line_B, label_A, label_B, xlabel, ylabel, title):
+def plot_lines(line_A, line_B, label_A, label_B, xlabel, ylabel, title, show=False):
    """ Plots performance curves """
    assert(line_A.shape == line_B.shape)
-   # N = len(line_A)
 
    fig, ax = plt.subplots(figsize=(10, 8))
-   # ax.plot(range(N), line_A, label=label_A)
-   # ax.plot(range(N), line_B, label=label_B)
    ax.plot(range(len(line_A)), line_A, label=label_A)
    ax.plot(range(len(line_B)), line_B, label=label_B)
    ax.legend()
-   # plt.xticks(range(N))
 
    ax.set(xlabel=xlabel, ylabel=ylabel)
    ax.grid()
 
    plt.savefig(f'plots/{title}.png', bbox_inches="tight")
-   plt.show()
 
-   return
+   if show:
+	   plt.show()
+
+   return plt
+
+
+def plot_three_subplots(costs, losses, accuracies, title):
+	fig, (ax_costs, ax_losses, ax_accuracies) = plt.subplots(1, 3, figsize=(16, 6))
+	fig.suptitle(title)
+
+	xlabel = 'epoch'
+	label_A = 'training'
+	label_B = 'validation'
+
+	# ax_costs.plot(costs[0], costs[1])
+	ax_costs.plot(range(len(costs[0])), costs[0], label=label_A + ' cost')
+	ax_costs.plot(range(len(costs[1])), costs[1], label=label_B + ' cost')
+	ax_costs.legend()
+	ax_costs.set(xlabel=xlabel, ylabel='cost')
+	ax_costs.grid()
+
+	# ax_losses.plot(losses[0], losses[1])
+	ax_losses.plot(range(len(losses[0])), losses[0], label=label_A + ' loss')
+	ax_losses.plot(range(len(losses[1])), losses[1], label=label_B + ' loss')
+	ax_losses.legend()
+	ax_losses.set(xlabel=xlabel, ylabel='loss')
+	ax_losses.grid()
+
+	# ax_accuracies.plot(accuracies[0], accuracies[1])
+	ax_accuracies.plot(range(len(accuracies[0])), accuracies[0], label=label_A + ' accuracy')
+	ax_accuracies.plot(range(len(accuracies[1])), accuracies[1], label=label_B + ' accuracy')
+	ax_accuracies.legend()
+	ax_accuracies.set(xlabel=xlabel, ylabel='accuracy')
+	ax_accuracies.grid()
+
+	# fig.set_figwidth(10)
+
+
+	plt.savefig(f'plots/{title}.png', bbox_inches="tight")
+
+	plt.show()
+
+	# cost_plot = plot_lines(line_A=costs['train'], line_B=costs['val'],
+	# 					   label_A='training cost', label_B='validation cost',
+	# 					   xlabel='epoch', ylabel='cost',
+	# 					   title='fig3_cost_' + title, show=False)
+	#
+	# loss_plot = plot_lines(line_A=losses['train'], line_B=losses['val'],
+	# 					   label_A='training loss', label_B='validation loss',
+	# 					   xlabel='epoch', ylabel='loss',
+	# 					   title='fig3_loss_' + title, show=False)
+	#
+	# accu_plot = plot_lines(line_A=accuracies['train'], line_B=accuracies['val'],
+	# 					   label_A='training accuracy', label_B='validation accuracy',
+	# 					   xlabel='epoch', ylabel='accuracy',
+	# 					   title='fig3_acc_' + title, show=False)
+
+	return
 
 
 class SingleLayerNetwork():
 	""" Single-layer network classifier based on mini-batch gradient descent """
 
-	def __init__(self, labels, data, decay_factor=1, m=50, verbose=0):
+	def __init__(self, labels, data, m=50, verbose=0):
 		""" W: weight matrix of size K x d
 			b: bias matrix of size K x 1 """
 		self.labels = labels
 		K = len(self.labels)
-
-		self.decay_factor = decay_factor
 
 		self.data = data
 		d = self.data['train_set']['X'].shape[0]
@@ -284,7 +334,9 @@ class SingleLayerNetwork():
 
 		return Ws['W1'], bs['b1'], Ws['W2'], bs['b2']
 
-	def mini_batch_gradient_descent(self, X, Y, our_lambda=0, n_batch=100, eta=0.001, n_epochs=20, save_costs=False):
+	def mini_batch_gradient_descent(self, X, Y, our_lambda=0, n_batch=100,
+									eta_min=1e-5, eta_max=1e-1, n_s=500,
+									n_epochs=20, save_costs=False):
 		""" Learn the model by performing mini-batch gradient descent
 			n_batch is the number of batches
 			eta is the learning rate
@@ -307,6 +359,9 @@ class SingleLayerNetwork():
 		else:
 			losses, costs = None, None
 
+		eta = eta_min
+		t = 0
+
 		for n in range(n_epochs):
 			for i in range(n_batch):
 				N = int(X.shape[1] / n_batch)
@@ -323,6 +378,15 @@ class SingleLayerNetwork():
 				self.b1 -= eta * grad_b1
 				self.W2 -= eta * grad_W2
 				self.b2 -= eta * grad_b2
+
+				if t <= n_s:
+					eta = eta_min + ((t / n_s) * (eta_max - eta_min))
+				elif t <= (2 * n_s):
+					eta = eta_max - (((t - n_s) / n_s) * (eta_max - eta_min))
+				t = (t + 1) % (2 * n_s)
+
+				# if t == (2 * n_s):
+				# 	break
 
 			if save_costs:
 				losses['train'][n], costs['train'][n] = \
@@ -342,16 +406,14 @@ class SingleLayerNetwork():
 
 			if self.verbose:
 				print()
-				# print(f'Cost training:\t\t{round(costs["train"][n], 2)}')
-				# print(f'Cost validation:\t{round(costs["val"][n], 2)}')
 				print(f'Loss training:\t\t{round(losses["train"][n], 2)}')
+				print(f'Cost training:\t\t{round(costs["train"][n], 2)}')
 				print(f'Loss validation:\t{round(losses["val"][n], 2)}')
-				# print(f'Accuracy training:\t{round(accuracies["train"][n], 2)}')
-				# print(f'Accuracy validation:\t{round(accuracies["val"][n], 2)}')
+				print(f'Cost validation:\t{round(costs["val"][n], 2)}')
+				print(f'Accuracy training:\t{round(accuracies["train"][n], 2)}')
+				print(f'Accuracy validation:\t{round(accuracies["val"][n], 2)}')
 				# print(f'Accuracy testing:\t{accuracies["test"][n]}')
 
-			# Bonus B) implement a decay of the learning rate.
-			eta *= self.decay_factor
 			# print(f'Current learning rate: {eta}')
 
 		return accuracies, costs, losses
@@ -360,14 +422,10 @@ class SingleLayerNetwork():
 def main():
 	seed = 12345
 	np.random.seed(seed)
-	our_lambda = 0.0
-	# n_epochs = 60
-	n_epochs = 40
-	n_batch = 100
-	eta = 0.001
-	decay_factor = 1.0
 	test_numerically = False
-	num_nodes = 50 # Number of nodes in the hidden layer
+	sanity_check = False # Deprecated
+	fig_3 = True
+	fig_4 = False
 
 	print()
 	print("------------------------ Loading dataset ------------------------")
@@ -388,8 +446,12 @@ def main():
 	if test_numerically:
 		print()
 		print("-------------------- Running gradient tests ---------------------")
+		our_lambda = 0.01
+		num_nodes = 50 # Number of nodes in the hidden layer
+
 		num_pixels = 20
 		num_images = 10
+		atol = 1e-04
 
 		train_set['X'] = train_set['X'][:num_pixels, :num_images]
 		train_set['Y'] = train_set['Y'][:num_pixels, :num_images]
@@ -397,8 +459,7 @@ def main():
 		X_batch = train_set['X']
 		Y_batch = train_set['Y']
 
-		clf = SingleLayerNetwork(labels, datasets, decay_factor=decay_factor,
-								 m=num_nodes, verbose=1)
+		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
 
 		grad_W1, grad_b1, grad_W2, grad_b2 = clf.compute_gradients(X_batch,
 																   Y_batch,
@@ -421,61 +482,125 @@ def main():
 		print('grad_W2_num')
 		print(grad_W2_num[:5, :20])
 		print()
-		print(f'All close: {np.allclose(grad_W1, grad_W1_num, atol=1e-04)}')
-		print(f'All close: {np.allclose(grad_W2, grad_W2_num, atol=1e-04)}')
+		print(f'All close: {np.allclose(grad_W1, grad_W1_num, atol=atol)}')
+		print(f'All close: {np.allclose(grad_W2, grad_W2_num, atol=atol)}')
 		# WRITE: With atol 1e-04 we get all to be close.
 		quit()
 
 	print()
 	print("-------------------- Instantiating classifier -------------------")
-	clf = SingleLayerNetwork(labels, datasets, decay_factor=decay_factor,
-							 m=num_nodes, verbose=1)
 
 	print()
 	print("---------------------- Learning classifier ----------------------")
-	# Sanity check
-	# num_pixels = 3072
-	# num_images = 100
-	#
-	# train_set['X'] = train_set['X'][:num_pixels, :num_images]
-	# train_set['Y'] = train_set['Y'][:num_pixels, :num_images]
+	# Has been deprecated. Was used to check if model could overfit. It could.
+	if sanity_check:
+		print()
+		print("------------------------ Sanity check ------------------------")
+		our_lambda = 0.01
+		n_epochs = 60
+		n_batch = 100
+		eta = 0.001
+		n_s = 500
+		decay_factor = 1.0
+		num_nodes = 50 # Number of nodes in the hidden layer
+		test_numerically = False
+		sanity_check = False
+		fig_3 = False
+		fig_4 = True
+		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
+		# See if we can overfit, i.e. achieve a very small loss on the training
+		# data by training on the following 100 examples.
+		num_pixels = 3072
+		num_images = 100
+		train_set['X'] = train_set['X'][:num_pixels, :num_images]
+		train_set['Y'] = train_set['Y'][:num_pixels, :num_images]
 
+	if fig_3:
+		print()
+		print("------------------------- Figure 3 -------------------------")
+		our_lambda = 0.01
+		n_epochs = 10
+		n_batch = 100
+		eta_min = 1e-5
+		eta_max = 1e-1
+		n_s = 500
+		num_nodes = 50 # Number of nodes in the hidden layer
 
-	accuracies, costs, losses = \
-	clf.mini_batch_gradient_descent(datasets['train_set']['X'],
-									datasets['train_set']['Y'],
-									our_lambda=our_lambda,
-									n_batch=n_batch,
-									eta=eta,
-									n_epochs=n_epochs,
-									save_costs=True)
+		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
 
+		accuracies, costs, losses = \
+		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+										datasets['train_set']['Y'],
+										our_lambda=our_lambda,
+										n_batch=n_batch,
+										eta_min=eta_min,
+										eta_max=eta_max,
+										n_s=n_s,
+										n_epochs=n_epochs,
+										save_costs=True)
 
-	tracc = accuracies["train"][-1]
-	vacc = accuracies["val"][-1]
-	teacc = accuracies["test"][-1]
+		tracc = accuracies["train"][-1]
+		vacc = accuracies["val"][-1]
+		teacc = accuracies["test"][-1]
 
-	print()
-	print(f'Final training data accuracy:\t\t{tracc}')
-	print(f'Final validation data accuracy:\t\t{vacc}')
-	print(f'Final test data accuracy:\t\t{teacc}')
+		print()
+		print(f'Final training data accuracy:\t\t{tracc}')
+		print(f'Final validation data accuracy:\t\t{vacc}')
+		print(f'Final test data accuracy:\t\t{teacc}')
 
-	title = f'lambda{our_lambda}_n-batch{n_batch}_eta{eta}_n-epochs{n_epochs}_df-{decay_factor}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+		title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
 
-	plot_lines(line_A=costs['train'], line_B=costs['val'],
-			   label_A='training cost', label_B='validation cos',
-			   xlabel='epoch', ylabel='cost', title='cost_' + title)
+		plot_three_subplots(costs=(costs['train'], costs['val']),
+							losses=(losses['train'], losses['val']),
+							accuracies=(accuracies['train'], accuracies['val']),
+							title='fig3_'+title)
 
-	plot_lines(line_A=losses['train'], line_B=losses['val'],
-			   label_A='training loss', label_B='validation loss',
-			   xlabel='epoch', ylabel='loss', title='loss_' + title)
+	if fig_4:
+		print()
+		print("------------------------- Figure 4 -------------------------")
+		our_lambda = 0.01
+		n_epochs = 50
+		n_batch = 100
+		eta_min = 1e-5
+		eta_max = 1e-1
+		n_s = 800
+		num_nodes = 50 # Number of nodes in the hidden layer
 
-	plot_lines(line_A=accuracies['train'], line_B=accuracies['val'],
-			   label_A='training accuracy', label_B='validation accuracy',
-			   xlabel='epoch', ylabel='accuracy', title='acc_' + title)
+		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
 
-	labels = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
-	montage(clf.W1, title, labels)
+		accuracies, costs, losses = \
+		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+										datasets['train_set']['Y'],
+										our_lambda=our_lambda,
+										n_batch=n_batch,
+										eta_min=eta_min,
+										eta_max=eta_max,
+										n_s=n_s,
+										n_epochs=n_epochs,
+										save_costs=True)
+
+		tracc = accuracies["train"][-1]
+		vacc = accuracies["val"][-1]
+		teacc = accuracies["test"][-1]
+
+		print()
+		print(f'Final training data accuracy:\t\t{tracc}')
+		print(f'Final validation data accuracy:\t\t{vacc}')
+		print(f'Final test data accuracy:\t\t{teacc}')
+
+		title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+
+		plot_lines(line_A=costs['train'], line_B=costs['val'],
+				   label_A='training cost', label_B='validation cos',
+				   xlabel='epoch', ylabel='cost', title='fig3_cost_' + title)
+
+		plot_lines(line_A=losses['train'], line_B=losses['val'],
+				   label_A='training loss', label_B='validation loss',
+				   xlabel='epoch', ylabel='loss', title='fig3_loss_' + title)
+
+		plot_lines(line_A=accuracies['train'], line_B=accuracies['val'],
+				   label_A='training accuracy', label_B='validation accuracy',
+				   xlabel='epoch', ylabel='accuracy', title='fig3_acc_' + title)
 
 	print()
 
