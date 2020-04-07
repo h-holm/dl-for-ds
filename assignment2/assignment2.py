@@ -407,19 +407,51 @@ def main():
 	test_numerically = False
 	sanity_check = False # Deprecated
 	fig_3 = False
-	fig_4 = True
+	fig_4 = False
+	exercise_4 = True
+
+	if test_numerically or sanity_check or fig_3 or fig_4:
+		exercise_4 = False
 
 	print()
 	print("------------------------ Loading dataset ------------------------")
 	datasets_folder = "Datasets/cifar-10-batches-py/"
-
 	labels = unpickle(datasets_folder + "batches.meta")[b'label_names']
 
-	train_set = load_dataset(datasets_folder, "data_batch_1", num_of_labels=len(labels))
-	val_set = load_dataset(datasets_folder, "data_batch_2", num_of_labels=len(labels))
-	test_set = load_dataset(datasets_folder, "test_batch", num_of_labels=len(labels))
+	if not exercise_4:
+		train_set = load_dataset(datasets_folder, "data_batch_1", num_of_labels=len(labels))
+		val_set = load_dataset(datasets_folder, "data_batch_2", num_of_labels=len(labels))
+		test_set = load_dataset(datasets_folder, "test_batch", num_of_labels=len(labels))
 
-	datasets = {'train_set': train_set, 'val_set': val_set, 'test_set': test_set}
+		datasets = {'train_set': train_set, 'val_set': val_set, 'test_set': test_set}
+	else:
+		# Use all available data for training. Reduce validation to 5000.
+		train_set_1 = load_dataset(datasets_folder, "data_batch_1", num_of_labels=len(labels))
+		train_set_2 = load_dataset(datasets_folder, "data_batch_2", num_of_labels=len(labels))
+		train_set_3 = load_dataset(datasets_folder, "data_batch_3", num_of_labels=len(labels))
+		train_set_4 = load_dataset(datasets_folder, "data_batch_4", num_of_labels=len(labels))
+		train_set_5 = load_dataset(datasets_folder, "data_batch_5", num_of_labels=len(labels))
+
+		train_set = dict()
+		train_set['X'] = np.concatenate((train_set_1['X'], train_set_2['X'], train_set_3['X'], train_set_4['X'], train_set_5['X']), axis=1)
+		train_set['Y'] = np.concatenate((train_set_1['Y'], train_set_2['Y'], train_set_3['Y'], train_set_4['Y'], train_set_5['Y']), axis=1)
+		train_set['y'] = np.concatenate((train_set_1['y'], train_set_2['y'], train_set_3['y'], train_set_4['y'], train_set_5['y']))
+
+		# Use last 5000 for validation ...
+		val_set = dict()
+		val_set['X'] = train_set['X'][:, -5000:]
+		val_set['Y'] = train_set['Y'][:, -5000:]
+		val_set['y'] = train_set['y'][-5000:]
+
+		# ... and subsequently remove them from the training data.
+		train_set['X'] = train_set['X'][:, :-5000]
+		train_set['Y'] = train_set['Y'][:, :-5000]
+		train_set['y'] = train_set['y'][:-5000]
+
+		test_set = load_dataset(datasets_folder, "test_batch", num_of_labels=len(labels))
+
+		datasets = {'train_set': train_set, 'val_set': val_set, 'test_set': test_set}
+
 	print()
 	print("---------------------- Normalizing dataset ----------------------")
 	for dataset_name, dataset in datasets.items():
@@ -588,6 +620,10 @@ def main():
 							losses=(losses['train'], losses['val']),
 							accuracies=(accuracies['train'], accuracies['val']),
 							title='fig4_' + title)
+
+	if exercise_4:
+		pass
+
 
 	print()
 
