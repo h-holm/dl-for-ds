@@ -672,7 +672,7 @@ def main():
 			plot_three_subplots(costs=(costs['train'], costs['val']),
 								losses=(losses['train'], losses['val']),
 								accuracies=(accuracies['train'], accuracies['val']),
-								title='ex4_' + title, show=False)
+								title='search_' + title, show=False)
 
 			results = [top_5_mean, tracc, vacc, teacc, our_lambda, n_batch,
 					   eta_min, eta_max, num_nodes, n_s, n_epochs, seed]
@@ -700,7 +700,7 @@ def main():
 		n_s = 4 * int(np.floor(datasets['train_set']['X'].shape[1] / n_batch))
 
 		# Number of epochs set to equal four cycles.
-		n_epochs = int(4 * (n_s / n_batch))
+		n_epochs = int(8 * (n_s / n_batch))
 
 		our_lambda = 0.00821
 
@@ -728,13 +728,13 @@ def main():
 		print(f'Final test data accuracy:\t\t{teacc}')
 		print(f'Final top 5 mean:\t\t\t{top_5_mean}')
 		print()
-		print(np.sum(sorted(accuracies['val'][:], reverse=True)))
+		print(sorted(accuracies['val'][:10], reverse=True))
 
 		title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_n-s{n_s}_m{num_nodes}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
 		plot_three_subplots(costs=(costs['train'], costs['val']),
 							losses=(losses['train'], losses['val']),
 							accuracies=(accuracies['train'], accuracies['val']),
-							title='ex4_' + title, show=True)
+							title='best_' + title, show=True)
 
 		results = [top_5_mean, tracc, vacc, teacc, our_lambda, n_batch,
 				   eta_min, eta_max, num_nodes, n_s, n_epochs, seed]
