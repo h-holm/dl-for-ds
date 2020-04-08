@@ -322,7 +322,7 @@ class SingleLayerNetwork():
 	def mini_batch_gradient_descent(self, X, Y, our_lambda=0, n_batch=100, eta_min=1e-5, eta_max=1e-1, n_s=500, n_epochs=20):
 		""" Learn the model by performing mini-batch gradient descent
 			our_lambda 	- regularization term
-			batch_size 	- number of examples per mini-batch
+			n_batch 	- number of examples per mini-batch
 			eta_min		- minimum learning rate
 			eta_max		- maximum learning rate
 			n_s			- step size
@@ -333,8 +333,11 @@ class SingleLayerNetwork():
 		accuracies['val'] = np.zeros(n_epochs)
 		accuracies['test'] = np.zeros(n_epochs)
 
+		list_settings = list()
+
 		if self.verbose:
 			print()
+
 			print(f'Accuracy training:\t{round(self.__compute_accuracy(self.data["train_set"]["X"], self.data["train_set"]["y"]), 4)}')
 			print(f'Accuracy validation:\t{round(self.__compute_accuracy(self.data["val_set"]["X"], self.data["val_set"]["y"]), 4)}')
 			print(f'Accuracy testing:\t{round(self.__compute_accuracy(self.data["test_set"]["X"], self.data["test_set"]["y"]), 4)}')
@@ -370,6 +373,22 @@ class SingleLayerNetwork():
 					eta = eta_max - (((t - n_s) / n_s) * (eta_max - eta_min))
 				t = (t + 1) % (2 * n_s)
 
+				# if t == (n_s + 1) or t == (2 * n_s - 1):
+				if t == (2 * n_s - 1):
+					tr_acc = self.__compute_accuracy(self.data['train_set']['X'],
+													 self.data['train_set']['y'])
+					v_acc = self.__compute_accuracy(self.data['val_set']['X'],
+													self.data['val_set']['y'])
+					te_acc = self.__compute_accuracy(self.data['test_set']['X'],
+													 self.data['test_set']['y'])
+
+					settings = {'t': t, 'our_lambda': our_lambda, 'eta': eta,
+								'eta_min': eta_min, 'eta_max': eta_max,
+								'n_batch': n_batch, 'n_s': n_s, 'n_epochs': n_epochs,
+								'tr-acc': tr_acc, 'v-acc': v_acc, 'te-acc': te_acc}
+
+					list_settings.append(settings)
+
 			losses['train'][n], costs['train'][n] = \
 			self.__compute_loss_and_cost(X, Y, our_lambda)
 
@@ -397,7 +416,16 @@ class SingleLayerNetwork():
 
 			# print(f'Current learning rate: {eta}')
 
-		return accuracies, costs, losses
+		settings = {'t': t, 'our_lambda': our_lambda, 'eta': eta,
+					'eta_min': eta_min, 'eta_max': eta_max, 'n_batch': n_batch,
+					'n_s': n_s, 'n_epochs': n_epochs,
+					'tr-acc': accuracies["train"][-1],
+					'v-acc': accuracies["val"][-1],
+					'te-acc': accuracies["test"][-1]}
+		list_settings.append(settings)
+
+
+		return accuracies, costs, losses, list_settings
 
 
 def main():
@@ -408,17 +436,18 @@ def main():
 	fig_3 = False
 	fig_4 = False
 	search = False
-	best = True
+	best = False
+	bonus = True
 
 	if test_numerically or sanity_check or fig_3 or fig_4:
-		search = False
+		search, best, bonus = False, False, False
 
 	print()
 	print("------------------------ Loading dataset ------------------------")
 	datasets_folder = "Datasets/cifar-10-batches-py/"
 	labels = unpickle(datasets_folder + "batches.meta")[b'label_names']
 
-	if search or best:
+	if search or best or bonus:
 		if search:
 			num_val = 5000
 		else:
@@ -547,7 +576,7 @@ def main():
 
 		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
 
-		accuracies, costs, losses = \
+		accuracies, costs, losses, _ = \
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
 										datasets['train_set']['Y'],
 										our_lambda=our_lambda,
@@ -586,7 +615,7 @@ def main():
 
 		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
 
-		accuracies, costs, losses = \
+		accuracies, costs, losses, _ = \
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
 										datasets['train_set']['Y'],
 										our_lambda=our_lambda,
@@ -651,7 +680,7 @@ def main():
 			our_lambda = round(our_lambda, 4)
 			clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
 
-			accuracies, costs, losses = \
+			accuracies, costs, losses, _ = \
 			clf.mini_batch_gradient_descent(datasets['train_set']['X'],
 											datasets['train_set']['Y'],
 											our_lambda=our_lambda,
@@ -711,7 +740,7 @@ def main():
 
 		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
 
-		accuracies, costs, losses = \
+		accuracies, costs, losses, _ = \
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
 										datasets['train_set']['Y'],
 										our_lambda=our_lambda,
@@ -747,6 +776,74 @@ def main():
 			writer = csv.writer(f, dialect='excel', delimiter=';')
 			writer.writerow(results)
 			writer.writerow(list(accuracies['val']))
+
+	if bonus:
+		print()
+		print("-------------------- Training best classifier -------------------")
+		results_file = 'results/results_bonus.csv'
+		# If file not exists, create it with its headers.
+		if not os.path.exists(results_file):
+			headers = ['top_5_vacc', 'tracc', 'vacc', 'teacc', 'lambda', 'n_batch',
+					   'eta_min', 'eta_max', 'm', 'n_s', 'n_epochs', 'seed']
+			with open(results_file, 'w+') as f:
+				writer = csv.writer(f, dialect='excel', delimiter=';')
+				writer.writerow(headers)
+
+		n_batch = 100
+		eta_min = 1e-5
+		eta_max = 1e-1
+		num_nodes = 50 # Number of nodes in the hidden layer
+
+		n_s = 4 * int(np.floor(datasets['train_set']['X'].shape[1] / n_batch))
+
+		# Number of epochs set to equal four cycles.
+		n_epochs = int(8 * (n_s / n_batch))
+
+		our_lambda = 0.00821
+
+		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
+
+		accuracies, costs, losses, settings = \
+		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+										datasets['train_set']['Y'],
+										our_lambda=our_lambda,
+										n_batch=n_batch,
+										eta_min=eta_min,
+										eta_max=eta_max,
+										n_s=n_s,
+										n_epochs=n_epochs)
+
+		for setting in settings:
+			print()
+			print(setting)
+
+		tracc = round(accuracies["train"][-1], 4)
+		vacc = round(accuracies["val"][-1], 4)
+		teacc = round(accuracies["test"][-1], 4)
+		top_5_mean = np.sum(sorted(accuracies['val'][:], reverse=True)[:5]) / 5
+		top_5_mean = round(top_5_mean, 4)
+
+		print()
+		print(f'Final training data accuracy:\t\t{tracc}')
+		print(f'Final validation data accuracy:\t\t{vacc}')
+		print(f'Final test data accuracy:\t\t{teacc}')
+		print(f'Final top 5 mean:\t\t\t{top_5_mean}')
+		print()
+		print(sorted(accuracies['val'], reverse=True)[:10])
+
+		title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_n-s{n_s}_m{num_nodes}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+		plot_three_subplots(costs=(costs['train'], costs['val']),
+							losses=(losses['train'], losses['val']),
+							accuracies=(accuracies['train'], accuracies['val']),
+							title='best_' + title, show=True)
+
+		results = [top_5_mean, tracc, vacc, teacc, our_lambda, n_batch,
+				   eta_min, eta_max, num_nodes, n_s, n_epochs, seed]
+		with open(results_file, 'a') as f:
+			writer = csv.writer(f, dialect='excel', delimiter=';')
+			writer.writerow(results)
+			writer.writerow(list(accuracies['val']))
+
 
 	print()
 
