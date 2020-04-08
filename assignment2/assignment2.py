@@ -419,7 +419,12 @@ def main():
 	labels = unpickle(datasets_folder + "batches.meta")[b'label_names']
 
 	if search or best:
-		# Use all available data for training. Reduce validation to 5000.
+		if search:
+			num_val = 5000
+		else:
+			num_val = 1000
+
+		# Use all available data for training. Reduce validation to num_val.
 		train_set_1 = load_dataset(datasets_folder, "data_batch_1", num_of_labels=len(labels))
 		train_set_2 = load_dataset(datasets_folder, "data_batch_2", num_of_labels=len(labels))
 		train_set_3 = load_dataset(datasets_folder, "data_batch_3", num_of_labels=len(labels))
@@ -431,16 +436,16 @@ def main():
 		train_set['Y'] = np.concatenate((train_set_1['Y'], train_set_2['Y'], train_set_3['Y'], train_set_4['Y'], train_set_5['Y']), axis=1)
 		train_set['y'] = np.concatenate((train_set_1['y'], train_set_2['y'], train_set_3['y'], train_set_4['y'], train_set_5['y']))
 
-		# Use last 5000 for validation ...
+		# Use last num_val for validation ...
 		val_set = dict()
-		val_set['X'] = train_set['X'][:, -5000:]
-		val_set['Y'] = train_set['Y'][:, -5000:]
-		val_set['y'] = train_set['y'][-5000:]
+		val_set['X'] = train_set['X'][:, -num_val:]
+		val_set['Y'] = train_set['Y'][:, -num_val:]
+		val_set['y'] = train_set['y'][-num_val:]
 
 		# ... and subsequently remove them from the training data.
-		train_set['X'] = train_set['X'][:, :-5000]
-		train_set['Y'] = train_set['Y'][:, :-5000]
-		train_set['y'] = train_set['y'][:-5000]
+		train_set['X'] = train_set['X'][:, :-num_val]
+		train_set['Y'] = train_set['Y'][:, :-num_val]
+		train_set['y'] = train_set['y'][:-num_val]
 
 		test_set = load_dataset(datasets_folder, "test_batch", num_of_labels=len(labels))
 
