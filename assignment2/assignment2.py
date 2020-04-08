@@ -5,6 +5,8 @@ cross-entropy loss of the classifier applied to the labelled training data and
 an L2 regularization term on the weight matrix."""
 
 
+import os
+import csv
 import pickle
 import matplotlib.pyplot as plt
 import numpy as np
@@ -110,7 +112,7 @@ def plot_lines(line_A, line_B, label_A, label_B, xlabel, ylabel, title, show=Fal
    return plt
 
 
-def plot_three_subplots(costs, losses, accuracies, title):
+def plot_three_subplots(costs, losses, accuracies, title, show=False):
 	fig, (ax_costs, ax_losses, ax_accuracies) = plt.subplots(1, 3, figsize=(16, 6))
 	fig.suptitle(title)
 
@@ -141,7 +143,8 @@ def plot_three_subplots(costs, losses, accuracies, title):
 
 	plt.savefig(f'plots/{title}.png', bbox_inches="tight")
 
-	plt.show()
+	if show:
+		plt.show()
 
 	return
 
@@ -316,9 +319,7 @@ class SingleLayerNetwork():
 
 		return Ws['W1'], bs['b1'], Ws['W2'], bs['b2']
 
-	def mini_batch_gradient_descent(self, X, Y, our_lambda=0, n_batch=100,
-									eta_min=1e-5, eta_max=1e-1, n_s=500,
-									n_epochs=20):
+	def mini_batch_gradient_descent(self, X, Y, our_lambda=0, n_batch=100, eta_min=1e-5, eta_max=1e-1, n_s=500, n_epochs=20):
 		""" Learn the model by performing mini-batch gradient descent
 			our_lambda 	- regularization term
 			batch_size 	- number of examples per mini-batch
@@ -332,10 +333,11 @@ class SingleLayerNetwork():
 		accuracies['val'] = np.zeros(n_epochs)
 		accuracies['test'] = np.zeros(n_epochs)
 
-		print()
-		print(f'Accuracy training:\t{round(self.__compute_accuracy(self.data["train_set"]["X"], self.data["train_set"]["y"]), 4)}')
-		print(f'Accuracy validation:\t{round(self.__compute_accuracy(self.data["val_set"]["X"], self.data["val_set"]["y"]), 4)}')
-		# print(f'Accuracy testing:\t{round(self.__compute_accuracy(self.data["test_set"]["X"], self.data["test_set"]["y"]), 4)}')
+		if self.verbose:
+			print()
+			print(f'Accuracy training:\t{round(self.__compute_accuracy(self.data["train_set"]["X"], self.data["train_set"]["y"]), 4)}')
+			print(f'Accuracy validation:\t{round(self.__compute_accuracy(self.data["val_set"]["X"], self.data["val_set"]["y"]), 4)}')
+			print(f'Accuracy testing:\t{round(self.__compute_accuracy(self.data["test_set"]["X"], self.data["test_set"]["y"]), 4)}')
 
 		losses, costs = dict(), dict()
 		losses['train'], costs['train'] = np.zeros(n_epochs), np.zeros(n_epochs)
@@ -380,8 +382,8 @@ class SingleLayerNetwork():
 															 self.data['train_set']['y'])
 			accuracies['val'][n] = self.__compute_accuracy(self.data['val_set']['X'],
 														   self.data['val_set']['y'])
-			# accuracies['test'][n] = self.__compute_accuracy(self.data['test_set']['X'],
-			# 												self.data['test_set']['y'])
+			accuracies['test'][n] = self.__compute_accuracy(self.data['test_set']['X'],
+															self.data['test_set']['y'])
 
 			if self.verbose:
 				print()
@@ -405,23 +407,18 @@ def main():
 	sanity_check = False # Deprecated
 	fig_3 = False
 	fig_4 = False
-	exercise_4 = True
+	search = False
+	best = True
 
 	if test_numerically or sanity_check or fig_3 or fig_4:
-		exercise_4 = False
+		search = False
 
 	print()
 	print("------------------------ Loading dataset ------------------------")
 	datasets_folder = "Datasets/cifar-10-batches-py/"
 	labels = unpickle(datasets_folder + "batches.meta")[b'label_names']
 
-	if not exercise_4:
-		train_set = load_dataset(datasets_folder, "data_batch_1", num_of_labels=len(labels))
-		val_set = load_dataset(datasets_folder, "data_batch_2", num_of_labels=len(labels))
-		test_set = load_dataset(datasets_folder, "test_batch", num_of_labels=len(labels))
-
-		datasets = {'train_set': train_set, 'val_set': val_set, 'test_set': test_set}
-	else:
+	if search or best:
 		# Use all available data for training. Reduce validation to 5000.
 		train_set_1 = load_dataset(datasets_folder, "data_batch_1", num_of_labels=len(labels))
 		train_set_2 = load_dataset(datasets_folder, "data_batch_2", num_of_labels=len(labels))
@@ -445,6 +442,12 @@ def main():
 		train_set['Y'] = train_set['Y'][:, :-5000]
 		train_set['y'] = train_set['y'][:-5000]
 
+		test_set = load_dataset(datasets_folder, "test_batch", num_of_labels=len(labels))
+
+		datasets = {'train_set': train_set, 'val_set': val_set, 'test_set': test_set}
+	else:
+		train_set = load_dataset(datasets_folder, "data_batch_1", num_of_labels=len(labels))
+		val_set = load_dataset(datasets_folder, "data_batch_2", num_of_labels=len(labels))
 		test_set = load_dataset(datasets_folder, "test_batch", num_of_labels=len(labels))
 
 		datasets = {'train_set': train_set, 'val_set': val_set, 'test_set': test_set}
@@ -604,11 +607,19 @@ def main():
 							accuracies=(accuracies['train'], accuracies['val']),
 							title='fig4_' + title)
 
-	if exercise_4:
+	if search:
 		print()
 		print("------------------------- Exercise 4 -------------------------")
-		# no need to change mbgd for lambda search.
-		our_lambda = 0.01
+		coarse = False
+		results_file = 'results/results.csv'
+		# If file not exists, create it with its headers.
+		if not os.path.exists(results_file):
+			headers = ['top_5_vacc', 'tracc', 'vacc', 'teacc', 'lambda', 'n_batch',
+					   'eta_min', 'eta_max', 'm', 'n_s', 'n_epochs', 'seed']
+			with open(results_file, 'w+') as f:
+				writer = csv.writer(f, dialect='excel', delimiter=';')
+				writer.writerow(headers)
+
 		n_batch = 100
 		eta_min = 1e-5
 		eta_max = 1e-1
@@ -620,7 +631,80 @@ def main():
 		# Number of epochs set to equal two cycles.
 		n_epochs = int(4 * (n_s / n_batch))
 
-		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
+		if coarse:
+			# Coarse lambda search.
+			lambda_min = 1e-5
+			lambda_max = 1e-1
+			lambdas = np.linspace(lambda_min, lambda_max, 8)
+		else:
+			# Fine lambda search.
+			lambda_min = 1e-5
+			lambda_max = 0.0285785714285714 # Pasted in from coarse results.
+			lambdas = np.linspace(lambda_min, lambda_max, 8)
+
+		for our_lambda in lambdas:
+			our_lambda = round(our_lambda, 4)
+			clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
+
+			accuracies, costs, losses = \
+			clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+											datasets['train_set']['Y'],
+											our_lambda=our_lambda,
+											n_batch=n_batch,
+											eta_min=eta_min,
+											eta_max=eta_max,
+											n_s=n_s,
+											n_epochs=n_epochs)
+
+			tracc = round(accuracies["train"][-1], 4)
+			vacc = round(accuracies["val"][-1], 4)
+			teacc = round(accuracies["test"][-1], 4)
+			top_5_mean = np.sum(sorted(accuracies['val'][:], reverse=True)[:5]) / 5
+			top_5_mean = round(top_5_mean, 4)
+
+			print()
+			print(f'Final training data accuracy:\t\t{tracc}')
+			print(f'Final validation data accuracy:\t\t{vacc}')
+			print(f'Final test data accuracy:\t\t{teacc}')
+			print(f'Final top 5 mean:\t\t\t{top_5_mean}')
+
+			title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_n-s{n_s}_m{num_nodes}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+			plot_three_subplots(costs=(costs['train'], costs['val']),
+								losses=(losses['train'], losses['val']),
+								accuracies=(accuracies['train'], accuracies['val']),
+								title='ex4_' + title, show=False)
+
+			results = [top_5_mean, tracc, vacc, teacc, our_lambda, n_batch,
+					   eta_min, eta_max, num_nodes, n_s, n_epochs, seed]
+			with open(results_file, 'a') as f:
+				writer = csv.writer(f, dialect='excel', delimiter=';')
+				writer.writerow(results)
+
+	if best:
+		print()
+		print("------------------- Training best classifier -------------------")
+		results_file = 'results/results_best.csv'
+		# If file not exists, create it with its headers.
+		if not os.path.exists(results_file):
+			headers = ['top_5_vacc', 'tracc', 'vacc', 'teacc', 'lambda', 'n_batch',
+					   'eta_min', 'eta_max', 'm', 'n_s', 'n_epochs', 'seed']
+			with open(results_file, 'w+') as f:
+				writer = csv.writer(f, dialect='excel', delimiter=';')
+				writer.writerow(headers)
+
+		n_batch = 100
+		eta_min = 1e-5
+		eta_max = 1e-1
+		num_nodes = 50 # Number of nodes in the hidden layer
+
+		n_s = 4 * int(np.floor(datasets['train_set']['X'].shape[1] / n_batch))
+
+		# Number of epochs set to equal four cycles.
+		n_epochs = int(4 * (n_s / n_batch))
+
+		our_lambda = 0.00821
+
+		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
 
 		accuracies, costs, losses = \
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
@@ -635,18 +719,30 @@ def main():
 		tracc = round(accuracies["train"][-1], 4)
 		vacc = round(accuracies["val"][-1], 4)
 		teacc = round(accuracies["test"][-1], 4)
+		top_5_mean = np.sum(sorted(accuracies['val'][:], reverse=True)[:5]) / 5
+		top_5_mean = round(top_5_mean, 4)
 
 		print()
 		print(f'Final training data accuracy:\t\t{tracc}')
 		print(f'Final validation data accuracy:\t\t{vacc}')
 		print(f'Final test data accuracy:\t\t{teacc}')
+		print(f'Final top 5 mean:\t\t\t{top_5_mean}')
+		print()
+		print(np.sum(sorted(accuracies['val'][:], reverse=True)))
 
 		title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_n-s{n_s}_m{num_nodes}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
-
 		plot_three_subplots(costs=(costs['train'], costs['val']),
 							losses=(losses['train'], losses['val']),
 							accuracies=(accuracies['train'], accuracies['val']),
-							title='ex4_' + title)
+							title='ex4_' + title, show=True)
+
+		results = [top_5_mean, tracc, vacc, teacc, our_lambda, n_batch,
+				   eta_min, eta_max, num_nodes, n_s, n_epochs, seed]
+		with open(results_file, 'a') as f:
+			writer = csv.writer(f, dialect='excel', delimiter=';')
+			writer.writerow(results)
+			writer.writerow(list(accuracies['val']))
+
 	print()
 
 	return
