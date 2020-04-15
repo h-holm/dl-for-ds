@@ -437,17 +437,17 @@ def main():
 	fig_4 = False
 	search = False
 	best = False
-	bonus = True
+	find_end_of_cycle_settings = False
 
 	if test_numerically or sanity_check or fig_3 or fig_4:
-		search, best, bonus = False, False, False
+		search, best, find_end_of_cycle_settings = False, False, False
 
 	print()
 	print("------------------------ Loading dataset ------------------------")
 	datasets_folder = "Datasets/cifar-10-batches-py/"
 	labels = unpickle(datasets_folder + "batches.meta")[b'label_names']
 
-	if search or best or bonus:
+	if search or best or find_end_of_cycle_settings:
 		if search:
 			num_val = 5000
 		else:
@@ -499,7 +499,7 @@ def main():
 
 		num_pixels = 20
 		num_images = 10
-		atol = 1e-04
+		atol = 1e-05
 
 		train_set['X'] = train_set['X'][:num_pixels, :num_images]
 		train_set['Y'] = train_set['Y'][:num_pixels, :num_images]
@@ -777,7 +777,7 @@ def main():
 			writer.writerow(results)
 			writer.writerow(list(accuracies['val']))
 
-	if bonus:
+	if find_end_of_cycle_settings:
 		print()
 		print("-------------------- Training best classifier -------------------")
 		results_file = 'results/results_bonus.csv'
