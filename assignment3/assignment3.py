@@ -10,6 +10,7 @@ import csv
 import pickle
 import matplotlib.pyplot as plt
 import numpy as np
+from collections import OrderedDict
 
 
 __author__ = "Henrik Holm"
@@ -152,7 +153,8 @@ def plot_three_subplots(costs, losses, accuracies, title, show=False):
 class KLayerNetwork():
 	""" K-layer network classifier based on mini-batch gradient descent """
 
-	def __init__(self, labels, data, alpha=0.9, batch_norm=False, verbose=0):
+	def __init__(self, labels, data, shapes, activations, alpha=0.9,
+				 batch_norm=False, verbose=0):
 		""" W: weight matrix of size K x d
 			b: bias matrix of size K x 1 """
 		self.alpha = alpha
@@ -165,8 +167,8 @@ class KLayerNetwork():
 		self.data = data
 		d = self.data['train_set']['X'].shape[0]
 
-		self.layers = layers
-		self.k = len(layers) - 1
+		self.layers = self.__create_layers(shapes, activations, self.verbose)
+		self.k = len(self.layers) - 1
 
 		# Initialize as Gaussian random values with 0 mean and 1/sqrt(d) stdev.
 		self.W1 = np.random.normal(0, 1 / np.sqrt(d), (m, d))	# (m, d)
@@ -184,6 +186,23 @@ class KLayerNetwork():
 			print(f'Shape of W2:\t\t{self.W2.shape}')
 			print(f'Shape of b1:\t\t{self.b1.shape}')
 			print(f'Shape of b2:\t\t{self.b2.shape}')
+
+	@staticmethod
+	def __create_layers(shapes, activations, verbose):
+		assert(len(shapes) == len(activations))
+
+		layers = OrderedDict()
+
+		for i in range(len(shapes)):
+			layers[f'layer{i + 1}'] = {'shape': shapes[i], 'activation': activations[i]}
+
+		if verbose:
+			print()
+			print(f'Layers and activation functions of our {len(layers)}-Layer Network:')
+			for k, v in layers.items():
+				print(f'- {k} \t\t shape: {v["shape"]} \t activation: {v["activation"]}')
+
+		return layers
 
 	def __soft_max(self, s):
 		""" Standard definition of the softmax function """
@@ -437,26 +456,15 @@ def main():
 	np.random.seed(seed)
 	test_numerically = False
 	sanity_check = False # Deprecated
-	fig_3 = False
-	fig_4 = False
-	search = False
-	best = False
-	find_end_of_cycle_settings = False
 	assignment_3 = True
-
-	if test_numerically or sanity_check or fig_3 or fig_4:
-		search, best, find_end_of_cycle_settings = False, False, False
 
 	print()
 	print("------------------------ Loading dataset ------------------------")
 	datasets_folder = "Datasets/cifar-10-batches-py/"
 	labels = unpickle(datasets_folder + "batches.meta")[b'label_names']
 
-	if search or best or find_end_of_cycle_settings or assignment_3:
-		if search:
-			num_val = 5000
-		else:
-			num_val = 1000
+	if assignment_3:
+		num_val = 5000
 
 		# Use all available data for training. Reduce validation to num_val.
 		train_set_1 = load_dataset(datasets_folder, "data_batch_1", num_of_labels=len(labels))
@@ -568,18 +576,25 @@ def main():
 		train_set['X'] = train_set['X'][:num_pixels, :num_images]
 		train_set['Y'] = train_set['Y'][:num_pixels, :num_images]
 
-	if fig_3:
+	if assignment_3:
 		print()
-		print("------------------------- Figure 3 -------------------------")
-		our_lambda = 0.01
+		print("------------------------- Assignment 3 -------------------------")
+		shapes = [(50, 3072), (10, 50)]
+		activations = ['relu', 'softmax']
+		alpha = 0.9
+		batch_norm = False
+
+		clf = KLayerNetwork(labels, datasets, shapes, activations, alpha,
+							batch_norm, verbose=1)
+
+		quit()
+
+		our_lambda = 0.00
 		n_epochs = 10
 		n_batch = 100
 		eta_min = 1e-5
 		eta_max = 1e-1
 		n_s = 500
-		num_nodes = 50 # Number of nodes in the hidden layer
-
-		clf = KLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
 
 		accuracies, costs, losses, _ = \
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
@@ -606,248 +621,6 @@ def main():
 							losses=(losses['train'], losses['val']),
 							accuracies=(accuracies['train'], accuracies['val']),
 							title='fig3_' + title)
-
-	if fig_4:
-		print()
-		print("------------------------- Figure 4 -------------------------")
-		our_lambda = 0.01
-		n_epochs = 50
-		n_batch = 100
-		eta_min = 1e-5
-		eta_max = 1e-1
-		n_s = 800
-		num_nodes = 50 # Number of nodes in the hidden layer
-
-		clf = KLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
-
-		accuracies, costs, losses, _ = \
-		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
-										datasets['train_set']['Y'],
-										our_lambda=our_lambda,
-										n_batch=n_batch,
-										eta_min=eta_min,
-										eta_max=eta_max,
-										n_s=n_s,
-										n_epochs=n_epochs)
-
-		tracc = round(accuracies["train"][-1], 4)
-		vacc = round(accuracies["val"][-1], 4)
-		teacc = round(accuracies["test"][-1], 4)
-
-		print()
-		print(f'Final training data accuracy:\t\t{tracc}')
-		print(f'Final validation data accuracy:\t\t{vacc}')
-		print(f'Final test data accuracy:\t\t{teacc}')
-
-		title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_n-s{n_s}_m{num_nodes}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
-
-		plot_three_subplots(costs=(costs['train'], costs['val']),
-							losses=(losses['train'], losses['val']),
-							accuracies=(accuracies['train'], accuracies['val']),
-							title='fig4_' + title)
-
-	if search:
-		print()
-		print("------------------------- Exercise 4 -------------------------")
-		coarse = False
-		results_file = 'results/results.csv'
-		# If file not exists, create it with its headers.
-		if not os.path.exists(results_file):
-			headers = ['top_5_vacc', 'tracc', 'vacc', 'teacc', 'lambda', 'n_batch',
-					   'eta_min', 'eta_max', 'm', 'n_s', 'n_epochs', 'seed']
-			with open(results_file, 'w+') as f:
-				writer = csv.writer(f, dialect='excel', delimiter=';')
-				writer.writerow(headers)
-
-		n_batch = 100
-		eta_min = 1e-5
-		eta_max = 1e-1
-		num_nodes = 50 # Number of nodes in the hidden layer
-
-		# As per Assignment PDF.
-		n_s = 2 * int(np.floor(datasets['train_set']['X'].shape[1] / n_batch))
-
-		# Number of epochs set to equal two cycles.
-		n_epochs = int(4 * (n_s / n_batch))
-
-		if coarse:
-			# Coarse lambda search.
-			lambda_min = 1e-5
-			lambda_max = 1e-1
-			lambdas = np.linspace(lambda_min, lambda_max, 8)
-		else:
-			# Fine lambda search.
-			lambda_min = 1e-5
-			lambda_max = 0.0285785714285714 # Pasted in from coarse results.
-			lambdas = np.linspace(lambda_min, lambda_max, 8)
-
-		for our_lambda in lambdas:
-			our_lambda = round(our_lambda, 4)
-			clf = KLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
-
-			accuracies, costs, losses, _ = \
-			clf.mini_batch_gradient_descent(datasets['train_set']['X'],
-											datasets['train_set']['Y'],
-											our_lambda=our_lambda,
-											n_batch=n_batch,
-											eta_min=eta_min,
-											eta_max=eta_max,
-											n_s=n_s,
-											n_epochs=n_epochs)
-
-			tracc = round(accuracies["train"][-1], 4)
-			vacc = round(accuracies["val"][-1], 4)
-			teacc = round(accuracies["test"][-1], 4)
-			top_5_mean = np.sum(sorted(accuracies['val'][:], reverse=True)[:5]) / 5
-			top_5_mean = round(top_5_mean, 4)
-
-			print()
-			print(f'Final training data accuracy:\t\t{tracc}')
-			print(f'Final validation data accuracy:\t\t{vacc}')
-			print(f'Final test data accuracy:\t\t{teacc}')
-			print(f'Final top 5 mean:\t\t\t{top_5_mean}')
-
-			title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_n-s{n_s}_m{num_nodes}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
-			plot_three_subplots(costs=(costs['train'], costs['val']),
-								losses=(losses['train'], losses['val']),
-								accuracies=(accuracies['train'], accuracies['val']),
-								title='search_' + title, show=False)
-
-			results = [top_5_mean, tracc, vacc, teacc, our_lambda, n_batch,
-					   eta_min, eta_max, num_nodes, n_s, n_epochs, seed]
-			with open(results_file, 'a') as f:
-				writer = csv.writer(f, dialect='excel', delimiter=';')
-				writer.writerow(results)
-
-	if best:
-		print()
-		print("------------------- Training best classifier -------------------")
-		results_file = 'results/results_best.csv'
-		# If file not exists, create it with its headers.
-		if not os.path.exists(results_file):
-			headers = ['top_5_vacc', 'tracc', 'vacc', 'teacc', 'lambda', 'n_batch',
-					   'eta_min', 'eta_max', 'm', 'n_s', 'n_epochs', 'seed']
-			with open(results_file, 'w+') as f:
-				writer = csv.writer(f, dialect='excel', delimiter=';')
-				writer.writerow(headers)
-
-		n_batch = 100
-		eta_min = 1e-5
-		eta_max = 1e-1
-		num_nodes = 50 # Number of nodes in the hidden layer
-
-		n_s = 4 * int(np.floor(datasets['train_set']['X'].shape[1] / n_batch))
-
-		# Number of epochs set to equal four cycles.
-		n_epochs = int(8 * (n_s / n_batch))
-
-		our_lambda = 0.00821
-
-		clf = KLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
-
-		accuracies, costs, losses, _ = \
-		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
-										datasets['train_set']['Y'],
-										our_lambda=our_lambda,
-										n_batch=n_batch,
-										eta_min=eta_min,
-										eta_max=eta_max,
-										n_s=n_s,
-										n_epochs=n_epochs)
-
-		tracc = round(accuracies["train"][-1], 4)
-		vacc = round(accuracies["val"][-1], 4)
-		teacc = round(accuracies["test"][-1], 4)
-		top_5_mean = np.sum(sorted(accuracies['val'][:], reverse=True)[:5]) / 5
-		top_5_mean = round(top_5_mean, 4)
-
-		print()
-		print(f'Final training data accuracy:\t\t{tracc}')
-		print(f'Final validation data accuracy:\t\t{vacc}')
-		print(f'Final test data accuracy:\t\t{teacc}')
-		print(f'Final top 5 mean:\t\t\t{top_5_mean}')
-		print()
-		print(sorted(accuracies['val'][:10], reverse=True))
-
-		title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_n-s{n_s}_m{num_nodes}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
-		plot_three_subplots(costs=(costs['train'], costs['val']),
-							losses=(losses['train'], losses['val']),
-							accuracies=(accuracies['train'], accuracies['val']),
-							title='best_' + title, show=True)
-
-		results = [top_5_mean, tracc, vacc, teacc, our_lambda, n_batch,
-				   eta_min, eta_max, num_nodes, n_s, n_epochs, seed]
-		with open(results_file, 'a') as f:
-			writer = csv.writer(f, dialect='excel', delimiter=';')
-			writer.writerow(results)
-			writer.writerow(list(accuracies['val']))
-
-	if find_end_of_cycle_settings:
-		print()
-		print("-------------------- Training best classifier -------------------")
-		results_file = 'results/results_bonus.csv'
-		# If file not exists, create it with its headers.
-		if not os.path.exists(results_file):
-			headers = ['top_5_vacc', 'tracc', 'vacc', 'teacc', 'lambda', 'n_batch',
-					   'eta_min', 'eta_max', 'm', 'n_s', 'n_epochs', 'seed']
-			with open(results_file, 'w+') as f:
-				writer = csv.writer(f, dialect='excel', delimiter=';')
-				writer.writerow(headers)
-
-		n_batch = 100
-		eta_min = 1e-5
-		eta_max = 1e-1
-		num_nodes = 50 # Number of nodes in the hidden layer
-
-		n_s = 4 * int(np.floor(datasets['train_set']['X'].shape[1] / n_batch))
-
-		# Number of epochs set to equal four cycles.
-		n_epochs = int(8 * (n_s / n_batch))
-
-		our_lambda = 0.00821
-
-		clf = KLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
-
-		accuracies, costs, losses, settings = \
-		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
-										datasets['train_set']['Y'],
-										our_lambda=our_lambda,
-										n_batch=n_batch,
-										eta_min=eta_min,
-										eta_max=eta_max,
-										n_s=n_s,
-										n_epochs=n_epochs)
-
-		for setting in settings:
-			print()
-			print(setting)
-
-		tracc = round(accuracies["train"][-1], 4)
-		vacc = round(accuracies["val"][-1], 4)
-		teacc = round(accuracies["test"][-1], 4)
-		top_5_mean = np.sum(sorted(accuracies['val'][:], reverse=True)[:5]) / 5
-		top_5_mean = round(top_5_mean, 4)
-
-		print()
-		print(f'Final training data accuracy:\t\t{tracc}')
-		print(f'Final validation data accuracy:\t\t{vacc}')
-		print(f'Final test data accuracy:\t\t{teacc}')
-		print(f'Final top 5 mean:\t\t\t{top_5_mean}')
-		print()
-		print(sorted(accuracies['val'], reverse=True)[:10])
-
-		title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_n-s{n_s}_m{num_nodes}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
-		plot_three_subplots(costs=(costs['train'], costs['val']),
-							losses=(losses['train'], losses['val']),
-							accuracies=(accuracies['train'], accuracies['val']),
-							title='best_' + title, show=True)
-
-		results = [top_5_mean, tracc, vacc, teacc, our_lambda, n_batch,
-				   eta_min, eta_max, num_nodes, n_s, n_epochs, seed]
-		with open(results_file, 'a') as f:
-			writer = csv.writer(f, dialect='excel', delimiter=';')
-			writer.writerow(results)
-			writer.writerow(list(accuracies['val']))
 
 
 	print()
