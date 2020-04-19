@@ -149,20 +149,24 @@ def plot_three_subplots(costs, losses, accuracies, title, show=False):
 	return
 
 
-class SingleLayerNetwork():
+class KLayerNetwork():
 	""" Single-layer network classifier based on mini-batch gradient descent """
 
-	def __init__(self, labels, data, m=50, verbose=0):
+	def __init__(self, labels, data, alpha=0.9, batch_norm=False, verbose=0):
 		""" W: weight matrix of size K x d
 			b: bias matrix of size K x 1 """
+		self.alpha = alpha
+		self.batch_norm = batch_norm
+		self.verbose = verbose
+
 		self.labels = labels
 		K = len(self.labels)
 
 		self.data = data
 		d = self.data['train_set']['X'].shape[0]
 
-		self.m = m
-		self.verbose = verbose
+		self.layers = layers
+		self.k = len(layers) - 1
 
 		# Initialize as Gaussian random values with 0 mean and 1/sqrt(d) stdev.
 		self.W1 = np.random.normal(0, 1 / np.sqrt(d), (m, d))	# (m, d)
@@ -438,6 +442,7 @@ def main():
 	search = False
 	best = False
 	find_end_of_cycle_settings = False
+	assignment_3 = True
 
 	if test_numerically or sanity_check or fig_3 or fig_4:
 		search, best, find_end_of_cycle_settings = False, False, False
@@ -447,7 +452,7 @@ def main():
 	datasets_folder = "Datasets/cifar-10-batches-py/"
 	labels = unpickle(datasets_folder + "batches.meta")[b'label_names']
 
-	if search or best or find_end_of_cycle_settings:
+	if search or best or find_end_of_cycle_settings or assignment_3:
 		if search:
 			num_val = 5000
 		else:
@@ -507,7 +512,7 @@ def main():
 		X_batch = train_set['X']
 		Y_batch = train_set['Y']
 
-		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
+		clf = KLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
 
 		grad_W1, grad_b1, grad_W2, grad_b2 = clf.compute_gradients(X_batch,
 																   Y_batch,
@@ -555,7 +560,7 @@ def main():
 		sanity_check = False
 		fig_3 = False
 		fig_4 = True
-		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
+		clf = KLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
 		# See if we can overfit, i.e. achieve a very small loss on the training
 		# data by training on the following 100 examples.
 		num_pixels = 3072
@@ -574,7 +579,7 @@ def main():
 		n_s = 500
 		num_nodes = 50 # Number of nodes in the hidden layer
 
-		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
+		clf = KLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
 
 		accuracies, costs, losses, _ = \
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
@@ -613,7 +618,7 @@ def main():
 		n_s = 800
 		num_nodes = 50 # Number of nodes in the hidden layer
 
-		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
+		clf = KLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
 
 		accuracies, costs, losses, _ = \
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
@@ -678,7 +683,7 @@ def main():
 
 		for our_lambda in lambdas:
 			our_lambda = round(our_lambda, 4)
-			clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
+			clf = KLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
 
 			accuracies, costs, losses, _ = \
 			clf.mini_batch_gradient_descent(datasets['train_set']['X'],
@@ -738,7 +743,7 @@ def main():
 
 		our_lambda = 0.00821
 
-		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
+		clf = KLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
 
 		accuracies, costs, losses, _ = \
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
@@ -801,7 +806,7 @@ def main():
 
 		our_lambda = 0.00821
 
-		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
+		clf = KLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
 
 		accuracies, costs, losses, settings = \
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
