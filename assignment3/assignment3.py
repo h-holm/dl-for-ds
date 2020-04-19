@@ -153,8 +153,7 @@ def plot_three_subplots(costs, losses, accuracies, title, show=False):
 class KLayerNetwork():
 	""" K-layer network classifier based on mini-batch gradient descent """
 
-	def __init__(self, labels, data, shapes, activations, alpha=0.9,
-				 batch_norm=False, verbose=0):
+	def __init__(self, labels, data, layers, alpha=0.9, batch_norm=False, verbose=0):
 		""" W: weight matrix of size K x d
 			b: bias matrix of size K x 1 """
 		self.alpha = alpha
@@ -165,44 +164,74 @@ class KLayerNetwork():
 		K = len(self.labels)
 
 		self.data = data
-		d = self.data['train_set']['X'].shape[0]
+		self.d = self.data['train_set']['X'].shape[0]
 
-		self.layers = self.__create_layers(shapes, activations, self.verbose)
+		self.layers = self.__create_layers(layers)
 		self.k = len(self.layers) - 1
 
-		# Initialize as Gaussian random values with 0 mean and 1/sqrt(d) stdev.
-		self.W1 = np.random.normal(0, 1 / np.sqrt(d), (m, d))	# (m, d)
+		self.Ws, self.bs, self.gammas, self.betas, self.mu_avs, self.v_avs, \
+		self.activations = list(), list(), list(), list(), list(), list(), list()
+		self.__he_initialization(self.layers)
 
-		# Initialize as Gaussian random values with 0 mean and 1/sqrt(m) stdev.
-		self.W2 = np.random.normal(0, 1 / np.sqrt(m), (K, m))	# (K, m)
+		if self.verbose > 1:
+			for i, (k, v) in enumerate(self.layers.items()):
+				print()
+				print(f'{k}:\t{v}')
+				print(self.Ws[i].shape)
+				print(self.Ws[i][:10, :10])
+				print(self.bs[i])
+				print(self.gammas[i])
+				print(self.betas[i])
+				print(self.mu_avs[i])
+				print(self.v_avs[i])
+				print(self.activations[i])
 
-		# "Set biases equal to zero"
-		self.b1 = np.zeros((m, 1))	# (m, 1)
-		self.b2 = np.zeros((K, 1))	# (K, 1)
+	def __create_layers(self, layers):
+		output_layers = OrderedDict()
+
+		output_layers['layer1'] = {'shape': (layers[0][0], self.d), 'activation': layers[0][1]}
+
+		for i in range(1, len(layers)):
+			shape = (layers[i][0], output_layers[f'layer{i}']['shape'][0])
+			activation = layers[i][1]
+			output_layers[f'layer{i + 1}'] = {'shape': shape, 'activation': activation}
 
 		if self.verbose:
 			print()
-			print(f'Shape of W1:\t\t{self.W1.shape}')
-			print(f'Shape of W2:\t\t{self.W2.shape}')
-			print(f'Shape of b1:\t\t{self.b1.shape}')
-			print(f'Shape of b2:\t\t{self.b2.shape}')
-
-	@staticmethod
-	def __create_layers(shapes, activations, verbose):
-		assert(len(shapes) == len(activations))
-
-		layers = OrderedDict()
-
-		for i in range(len(shapes)):
-			layers[f'layer{i + 1}'] = {'shape': shapes[i], 'activation': activations[i]}
-
-		if verbose:
-			print()
 			print(f'Layers and activation functions of our {len(layers)}-Layer Network:')
-			for k, v in layers.items():
+			for k, v in output_layers.items():
 				print(f'- {k} \t\t shape: {v["shape"]} \t activation: {v["activation"]}')
 
-		return layers
+		return output_layers
+
+	def __he_initialization(self, layers):
+		for layer in self.layers.values():
+			shape = layer['shape']
+
+			# Initialize as Gaussian random values with 0 mean and 1/sqrt(d) stdev.
+			W = np.random.normal(0, 1 / np.sqrt(shape[1]), size=shape)
+			self.Ws.append(W)
+
+			# "Set biases equal to zero"
+			b = np.zeros((shape[0], 1)) # ?
+			self.bs.append(b)
+
+			gamma = np.ones((shape[0], 1))
+			self.gammas.append(gamma)
+
+			beta = np.zeros((shape[0], 1))
+			self.betas.append(beta)
+
+			mu_av = np.zeros((shape[0], 1))
+			self.mu_avs.append(mu_av)
+
+			v_av = np.zeros((shape[0], 1))
+			self.v_avs.append(v_av)
+
+			activation = layer['activation']
+			self.activations.append(activation)
+
+		return
 
 	def __soft_max(self, s):
 		""" Standard definition of the softmax function """
@@ -578,14 +607,16 @@ def main():
 
 	if assignment_3:
 		print()
-		print("------------------------- Assignment 3 -------------------------")
-		shapes = [(50, 3072), (10, 50)]
-		activations = ['relu', 'softmax']
+		print("-------------------------- Assignment 3 -------------------------")
+		# shapes = [((50, 3072)), (10, 50)]
+		# activations = ['relu', 'softmax']
+		layers = [(50, 'relu'), (10, 'softmax')]
 		alpha = 0.9
 		batch_norm = False
 
-		clf = KLayerNetwork(labels, datasets, shapes, activations, alpha,
-							batch_norm, verbose=1)
+		# clf = KLayerNetwork(labels, datasets, shapes, activations, alpha,
+		# 					batch_norm, verbose=1)
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=1)
 
 		quit()
 
