@@ -149,8 +149,8 @@ def plot_three_subplots(costs, losses, accuracies, title, show=False):
 	return
 
 
-class SingleLayerNetwork():
-	""" Single-layer network classifier based on mini-batch gradient descent """
+class TwoLayerNetwork():
+	""" Two-layer network classifier based on mini-batch gradient descent """
 
 	def __init__(self, labels, data, m=50, verbose=0):
 		""" W: weight matrix of size K x d
@@ -507,7 +507,7 @@ def main():
 		X_batch = train_set['X']
 		Y_batch = train_set['Y']
 
-		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
+		clf = TwoLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
 
 		grad_W1, grad_b1, grad_W2, grad_b2 = clf.compute_gradients(X_batch,
 																   Y_batch,
@@ -555,7 +555,7 @@ def main():
 		sanity_check = False
 		fig_3 = False
 		fig_4 = True
-		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
+		clf = TwoLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
 		# See if we can overfit, i.e. achieve a very small loss on the training
 		# data by training on the following 100 examples.
 		num_pixels = 3072
@@ -574,7 +574,7 @@ def main():
 		n_s = 500
 		num_nodes = 50 # Number of nodes in the hidden layer
 
-		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
+		clf = TwoLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
 
 		accuracies, costs, losses, _ = \
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
@@ -613,7 +613,7 @@ def main():
 		n_s = 800
 		num_nodes = 50 # Number of nodes in the hidden layer
 
-		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
+		clf = TwoLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
 
 		accuracies, costs, losses, _ = \
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
@@ -678,7 +678,7 @@ def main():
 
 		for our_lambda in lambdas:
 			our_lambda = round(our_lambda, 4)
-			clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
+			clf = TwoLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
 
 			accuracies, costs, losses, _ = \
 			clf.mini_batch_gradient_descent(datasets['train_set']['X'],
@@ -738,7 +738,7 @@ def main():
 
 		our_lambda = 0.00821
 
-		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
+		clf = TwoLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
 
 		accuracies, costs, losses, _ = \
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
@@ -801,7 +801,7 @@ def main():
 
 		our_lambda = 0.00821
 
-		clf = SingleLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
+		clf = TwoLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
 
 		accuracies, costs, losses, settings = \
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
