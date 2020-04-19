@@ -150,7 +150,7 @@ def plot_three_subplots(costs, losses, accuracies, title, show=False):
 
 
 class KLayerNetwork():
-	""" Single-layer network classifier based on mini-batch gradient descent """
+	""" K-layer network classifier based on mini-batch gradient descent """
 
 	def __init__(self, labels, data, alpha=0.9, batch_norm=False, verbose=0):
 		""" W: weight matrix of size K x d
