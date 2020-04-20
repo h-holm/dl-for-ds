@@ -169,22 +169,26 @@ class KLayerNetwork():
 		self.layers = self.__create_layers(layers)
 		self.k = len(self.layers) - 1
 
-		self.Ws, self.bs, self.gammas, self.betas, self.mu_avs, self.v_avs, \
-		self.activations = list(), list(), list(), list(), list(), list(), list()
-		self.__he_initialization(self.layers)
+		self.activation_functions = {'softmax': self.__softmax, 'relu': self.__relu}
 
-		if self.verbose > 1:
-			for i, (k, v) in enumerate(self.layers.items()):
-				print()
-				print(f'{k}:\t{v}')
-				print(self.Ws[i].shape)
-				print(self.Ws[i][:10, :10])
-				print(self.bs[i])
-				print(self.gammas[i])
-				print(self.betas[i])
-				print(self.mu_avs[i])
-				print(self.v_avs[i])
-				print(self.activations[i])
+		# Instead add these lists as values in the layers dictionaries.
+		# self.Ws, self.bs, self.gammas, self.betas, self.mu_avs, self.v_avs, \
+		# self.activations = list(), list(), list(), list(), list(), list(), list()
+		# self.__he_initialization(self.layers)
+		self.__he_initialization()
+
+		# if self.verbose > 1:
+		# 	for i, (k, v) in enumerate(self.layers.items()):
+		# 		print()
+		# 		print(f'{k}:\t{v}')
+		# 		print(self.Ws[i].shape)
+		# 		print(self.Ws[i][:10, :10])
+		# 		print(self.bs[i])
+		# 		print(self.gammas[i])
+		# 		print(self.betas[i])
+		# 		print(self.mu_avs[i])
+		# 		print(self.v_avs[i])
+		# 		print(self.activations[i])
 
 	def __create_layers(self, layers):
 		output_layers = OrderedDict()
@@ -204,36 +208,45 @@ class KLayerNetwork():
 
 		return output_layers
 
-	def __he_initialization(self, layers):
+	def __he_initialization(self):
+		""" Adds weight matrix, bias matrix and other parameters to each layer"""
 		for layer in self.layers.values():
 			shape = layer['shape']
 
 			# Initialize as Gaussian random values with 0 mean and 1/sqrt(d) stdev.
-			W = np.random.normal(0, 1 / np.sqrt(shape[1]), size=shape)
-			self.Ws.append(W)
+			# W = np.random.normal(0, 1 / np.sqrt(shape[1]), size=shape)
+			# self.Ws.append(W)
+			layer['W'] = np.random.normal(0, 1 / np.sqrt(shape[1]), size=shape)
 
 			# "Set biases equal to zero"
-			b = np.zeros((shape[0], 1)) # ?
-			self.bs.append(b)
+			# b = np.zeros((shape[0], 1)) # ?
+			# self.bs.append(b)
+			layer['b'] = np.zeros((shape[0], 1)) # ?
 
-			gamma = np.ones((shape[0], 1))
-			self.gammas.append(gamma)
+			# gamma = np.ones((shape[0], 1))
+			# self.gammas.append(gamma)
+			layer['gamma'] = np.ones((shape[0], 1))
 
-			beta = np.zeros((shape[0], 1))
-			self.betas.append(beta)
+			# beta = np.zeros((shape[0], 1))
+			# self.betas.append(beta)
+			layer['beta'] = np.zeros((shape[0], 1))
 
-			mu_av = np.zeros((shape[0], 1))
-			self.mu_avs.append(mu_av)
+			# mu_av = np.zeros((shape[0], 1))
+			# self.mu_avs.append(mu_av)
+			layer['mu_av'] = np.zeros((shape[0], 1))
 
-			v_av = np.zeros((shape[0], 1))
-			self.v_avs.append(v_av)
+			# v_av = np.zeros((shape[0], 1))
+			# self.v_avs.append(v_av)
+			layer['v_av'] = np.zeros((shape[0], 1))
 
 			activation = layer['activation']
-			self.activations.append(activation)
+			activation_function = self.activation_functions[activation]
+			# self.activations.append(activation_function)
+			layer['activation_function'] = activation_function
 
 		return
 
-	def __soft_max(self, s):
+	def __softmax(self, s):
 		""" Standard definition of the softmax function """
 		# return np.exp(s) / np.sum(np.exp(s), axis=0)
 		return np.exp(s - np.max(s, axis=0)) / np.exp(s - np.max(s, axis=0)).sum(axis=0)
@@ -243,20 +256,33 @@ class KLayerNetwork():
 		return np.maximum(s, 0)
 
 	def __evaluate_classifier(self, X):
-		""" Implement SoftMax using equations 1 and 2.
-			Each column of X corresponds to an image and it has size d x n. """
-		s1 = np.dot(self.W1, X) + self.b1
-		h = self.__relu(s1)
+		# s1 = np.dot(self.W1, X) + self.b1
+		# h = self.__relu(s1)
+		#
+		# s2 = np.dot(self.W2, h) + self.b2
+		# p = self.__softmax(s2)
+		#
+		# if self.verbose > 1:
+		# 	print()
+		# 	print(f'Shape of s1:\t\t{s1.shape}')
+		# 	print(f'Shape of h:\t\t{h.shape}')
+		# 	print(f'Shape of s2:\t\t{s2.shape}')
+		# 	print(f'Shape of p:\t\t{p.shape}')
 
-		s2 = np.dot(self.W2, h) + self.b2
-		p = self.__soft_max(s2)
+		for layer in self.layers:
+			print(layer)
+			s1 = np.dot(self.W1, X) + self.b1
+			h = self.__relu(s1)
 
-		if self.verbose > 1:
-			print()
-			print(f'Shape of s1:\t\t{s1.shape}')
-			print(f'Shape of h:\t\t{h.shape}')
-			print(f'Shape of s2:\t\t{s2.shape}')
-			print(f'Shape of p:\t\t{p.shape}')
+			s2 = np.dot(self.W2, h) + self.b2
+			p = self.__softmax(s2)
+
+			if self.verbose > 1:
+				print()
+				print(f'Shape of s1:\t\t{s1.shape}')
+				print(f'Shape of h:\t\t{h.shape}')
+				print(f'Shape of s2:\t\t{s2.shape}')
+				print(f'Shape of p:\t\t{p.shape}')
 
 		return h, p
 
