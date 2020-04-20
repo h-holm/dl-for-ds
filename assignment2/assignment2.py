@@ -429,6 +429,8 @@ class TwoLayerNetwork():
 
 
 def main():
+	# TODO: FIX BATCH_SIZE AND N_BATCH ERROR. n_batch is the number of batches,
+	# but it should be calculated from the input batch_size, not vice versa.
 	seed = 12345
 	np.random.seed(seed)
 	test_numerically = False
