@@ -171,24 +171,10 @@ class KLayerNetwork():
 
 		self.activation_functions = {'softmax': self.__softmax, 'relu': self.__relu}
 
-		# Instead add these lists as values in the layers dictionaries.
 		# self.Ws, self.bs, self.gammas, self.betas, self.mu_avs, self.v_avs, \
 		# self.activations = list(), list(), list(), list(), list(), list(), list()
 		# self.__he_initialization(self.layers)
 		self.__he_initialization()
-
-		# if self.verbose > 1:
-		# 	for i, (k, v) in enumerate(self.layers.items()):
-		# 		print()
-		# 		print(f'{k}:\t{v}')
-		# 		print(self.Ws[i].shape)
-		# 		print(self.Ws[i][:10, :10])
-		# 		print(self.bs[i])
-		# 		print(self.gammas[i])
-		# 		print(self.betas[i])
-		# 		print(self.mu_avs[i])
-		# 		print(self.v_avs[i])
-		# 		print(self.activations[i])
 
 	def __create_layers(self, layers):
 		output_layers = OrderedDict()
@@ -256,35 +242,40 @@ class KLayerNetwork():
 		return np.maximum(s, 0)
 
 	def __evaluate_classifier(self, X):
-		# s1 = np.dot(self.W1, X) + self.b1
-		# h = self.__relu(s1)
-		#
-		# s2 = np.dot(self.W2, h) + self.b2
-		# p = self.__softmax(s2)
-		#
-		# if self.verbose > 1:
-		# 	print()
-		# 	print(f'Shape of s1:\t\t{s1.shape}')
-		# 	print(f'Shape of h:\t\t{h.shape}')
-		# 	print(f'Shape of s2:\t\t{s2.shape}')
-		# 	print(f'Shape of p:\t\t{p.shape}')
+		X_copy = np.copy(X)
+		Hs = list()
+		for layer in self.layers.values():
+			W, b = layer['W'], layer['b']
+			activation = layer['activation']
+			activation_function  = layer['activation_function']
+			print()
+			print()
+			print(W.shape)
+			print(b.shape)
+			print(X_copy.shape)
+			if activation == 'relu':
+				s = np.dot(W, X_copy) + b
+				H = activation_function(s)
+				Hs.append(s)
+				if self.verbose > 1:
+					print()
+					print(f'Shape of s:\t\t{s.shape}')
+					print(f'Shape of H:\t\t{H.shape}')
+			else:
+				s = np.dot(W, X_copy) + b
+				P = activation_function(s)
+				if self.verbose > 1:
+					print()
+					print(f'Shape of s:\t\t{s.shape}')
+					print(f'Shape of P:\t\t{P.shape}')
 
-		for layer in self.layers:
-			print(layer)
-			s1 = np.dot(self.W1, X) + self.b1
-			h = self.__relu(s1)
+		if self.verbose > 1:
+			print()
+			print(f'Length of Hs:\t\t{len(Hs)}')
+			print(f'Shape of last H:\t\t{H.shape}')
+			print(f'Shape of P:\t\t{P.shape}')
 
-			s2 = np.dot(self.W2, h) + self.b2
-			p = self.__softmax(s2)
-
-			if self.verbose > 1:
-				print()
-				print(f'Shape of s1:\t\t{s1.shape}')
-				print(f'Shape of h:\t\t{h.shape}')
-				print(f'Shape of s2:\t\t{s2.shape}')
-				print(f'Shape of p:\t\t{p.shape}')
-
-		return h, p
+		return Hs, P
 
 	def __compute_loss_and_cost(self, X, Y, our_lambda):
 		""" Compute cost using the cross-entropy loss.
@@ -297,8 +288,20 @@ class KLayerNetwork():
 
 		# If label is encoded as one-hot repr., then cross entropy is -log(yTp).
 		loss = (1 / N) * (-np.sum(Y * np.log(p)))
-		reg = our_lambda * (np.sum(self.W1 * self.W1) + np.sum(self.W2 * self.W2))
-		cost = loss + reg
+		loss2 = np.float64(1 / N) * (-np.sum(Y * np.log(p)))
+
+		print(loss == loss2)
+		np.array_equal(loss, loss2)
+
+		weights_squared = 0.0
+		for layer in self.layers:
+			W = layer['W']
+			weights_squared += np.sum(np.square(W))
+
+		cost = loss + our_lambda * weights_squared
+
+		# reg = our_lambda * (np.sum(self.W1 * self.W1) + np.sum(self.W2 * self.W2))
+		# cost = loss + reg
 
 		return loss, cost
 
@@ -308,6 +311,9 @@ class KLayerNetwork():
 			- y is a vector pf ground truth labels of length N
 			Returns the accuracy. which is a scalar. """
 		N = X.shape[1]
+		print()
+		print(X.shape)
+		print(y.shape)
 		highest_P = np.argmax(self.__evaluate_classifier(X)[1], axis=0)
 		count = highest_P.T[highest_P == np.asarray(y)].shape[0]
 
@@ -315,39 +321,47 @@ class KLayerNetwork():
 
 	def compute_gradients(self, X_batch, Y_batch, our_lambda):
 		N = X_batch.shape[1]
-		K = Y_batch.shape[0]
+
+		gradients = dict()
+		gradients['W'] = [np.zeros(layer['W'].shape) for layer in self.layers.values()]
+		gradients['b'] = [np.zeros(layer['b'].shape) for layer in self.layers.values()]
+		print(len(gradients['W']))
+		print(len(gradients['b']))
 
 		# 1) evalutate the network (the forward pass)
+		print(X_batch.shape)
 		H_batch, P_batch = self.__evaluate_classifier(X_batch)
 
-		# 2) compute the gradients (the backward pass)
-		# Page 49 in Lecture4.pdf
+		# 2) compute the gradients (the backward pass). Page 49 in Lecture4.pdf
 		G_batch = -(Y_batch - P_batch)
 
-		grad_W2 = (1 / N) * np.dot(G_batch, H_batch.T) + (2 * our_lambda * self.W2)
-		grad_b2 = np.reshape((1 / N) * np.dot(G_batch, np.ones(N)), (K, 1))
+		# Backwards as per page 36 in Lecture4.pdf ("for l=k, k-1, ..., 2").
+		print(len(self.layers))
+		for l in range(len(self.layers) - 1, 0, -1):
+			print('l')
+			print(l)
 
-		# G_batch = self.W2.T@G_batch
-		G_batch = np.dot(self.W2.T, G_batch)
-		H_batch = np.maximum(H_batch, 0)
-		# H_batch[H_batch <= 0] = 0
+			gradients['W'][l] = (1 / N) * np.dot(G_batch, H_batch[l-1].T) + \
+			(2 * our_lambda * self.layers[l]['W'])
 
-		# Indicator function on H_batch to yield only values larger than 0.
-		G_batch = np.multiply(G_batch, H_batch > 0)
+			gradients['b'][l] = np.reshape((1 / N) * \
+			np.dot(G_batch, np.ones(N)), (self.layers[l]['b'].shape[0], 1))
 
-		# No need to multiply by 2
-		grad_W1 = (1 / N) * np.dot(G_batch, X_batch.T) + (our_lambda * self.W1)
-		# grad_W1 = (1 / N) * np.dot(G_batch, X_batch.T) + (2 * our_lambda * self.W1)
-		grad_b1 = np.reshape((1 / N) * np.dot(G_batch, np.ones(N)), (self.m, 1))
+			# grad_W2 = (1 / N) * np.dot(G_batch, H_batch.T) + (2 * our_lambda * self.W2)
+			# grad_b2 = np.reshape((1 / N) * np.dot(G_batch, np.ones(N)), (K, 1))
 
-		if self.verbose > 1:
-			print()
-			print(f'shape of grad_W1:\t{grad_W1.shape}')
-			print(f'shape of grad_W2:\t{grad_W2.shape}')
-			print(f'shape of grad_b1:\t{grad_b1.shape}')
-			print(f'shape of grad_b2:\t{grad_b2.shape}')
+			G_batch = np.dot(self.layers[l]['W'].T, G_batch)
+			H_batch[l-1] = np.maximum(H_batch, 0)
 
-		return grad_W1, grad_b1, grad_W2, grad_b2
+			# Indicator function on H_batch to yield only values larger than 0.
+			G_batch = np.multiply(G_batch, H_batch[l-1] > 0)
+
+		# And now for the first layer, which was left out.
+		gradients['W'][0] = (1 / N) * np.dot(G_batch, X_batch.T) + \
+		(our_lambda * self.layers[0]['W'])
+		gradients['b'][0] = np.reshape((1 / N) * np.dot(G_batch, np.ones(N)), self.layers[0]['b'].shape)
+
+		return gradients
 
 	def compute_gradients_num(self, X_batch, Y_batch, our_lambda=0, h=1e-5):
 		""" Compute gradients of the weight and bias numerically.
@@ -413,13 +427,6 @@ class KLayerNetwork():
 
 		list_settings = list()
 
-		if self.verbose:
-			print()
-
-			print(f'Accuracy training:\t{round(self.__compute_accuracy(self.data["train_set"]["X"], self.data["train_set"]["y"]), 4)}')
-			print(f'Accuracy validation:\t{round(self.__compute_accuracy(self.data["val_set"]["X"], self.data["val_set"]["y"]), 4)}')
-			print(f'Accuracy testing:\t{round(self.__compute_accuracy(self.data["test_set"]["X"], self.data["test_set"]["y"]), 4)}')
-
 		losses, costs = dict(), dict()
 		losses['train'], costs['train'] = np.zeros(n_epochs), np.zeros(n_epochs)
 		losses['val'], costs['val'] = np.zeros(n_epochs), np.zeros(n_epochs)
@@ -430,8 +437,13 @@ class KLayerNetwork():
 		for n in range(n_epochs):
 			for i in range(n_batch):
 				N = int(X.shape[1] / n_batch)
+				print('N')
+				print(N)
 				i_start = (i) * N
 				i_end = (i + 1) * N
+
+				print(i_start)
+				print(i_end)
 
 				X_batch = X[:, i_start:i_end]
 				Y_batch = Y[:, i_start:i_end]
@@ -642,13 +654,11 @@ def main():
 
 		# clf = KLayerNetwork(labels, datasets, shapes, activations, alpha,
 		# 					batch_norm, verbose=1)
-		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=1)
-
-		quit()
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=2)
 
 		our_lambda = 0.00
 		n_epochs = 10
-		n_batch = 100
+		batch_size = 100
 		eta_min = 1e-5
 		eta_max = 1e-1
 		n_s = 500
@@ -657,7 +667,7 @@ def main():
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
 										datasets['train_set']['Y'],
 										our_lambda=our_lambda,
-										n_batch=n_batch,
+										batch_size=n_batch,
 										eta_min=eta_min,
 										eta_max=eta_max,
 										n_s=n_s,
