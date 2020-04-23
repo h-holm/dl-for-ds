@@ -10,7 +10,6 @@ import csv
 import pickle
 import matplotlib.pyplot as plt
 import numpy as np
-from collections import OrderedDict
 
 
 __author__ = "Henrik Holm"
@@ -156,48 +155,54 @@ class KLayerNetwork():
 	def __init__(self, labels, data, layers, alpha=0.9, batch_norm=False, verbose=0):
 		""" W: weight matrix of size K x d
 			b: bias matrix of size K x 1 """
-		self.alpha = alpha
-		self.batch_norm = batch_norm
-		self.verbose = verbose
-
+		self.activation_functions = {'softmax': self.__softmax, 'relu': self.__relu}
 		self.labels = labels
-		K = len(self.labels)
 
 		self.data = data
 		self.d = self.data['train_set']['X'].shape[0]
 
+		self.alpha = alpha
+
+		self.batch_norm = batch_norm
+		if self.batch_norm:
+			self.params = ['W', 'b', 'gamma', 'beta']
+		else:
+			self.params = ['W', 'b']
+
+		self.verbose = verbose
+
 		self.layers = self.__create_layers(layers)
 		self.k = len(self.layers) - 1
 
-		self.activation_functions = {'softmax': self.__softmax, 'relu': self.__relu}
-
-		# self.Ws, self.bs, self.gammas, self.betas, self.mu_avs, self.v_avs, \
-		# self.activations = list(), list(), list(), list(), list(), list(), list()
-		# self.__he_initialization(self.layers)
 		self.__he_initialization()
 
-	def __create_layers(self, layers):
-		output_layers = OrderedDict()
 
-		output_layers['layer1'] = {'shape': (layers[0][0], self.d), 'activation': layers[0][1]}
+	def __create_layers(self, input_layers):
+		output_layers = list()
 
-		for i in range(1, len(layers)):
-			shape = (layers[i][0], output_layers[f'layer{i}']['shape'][0])
-			activation = layers[i][1]
-			output_layers[f'layer{i + 1}'] = {'shape': shape, 'activation': activation}
+		first_layer = {'shape': (input_layers[0][0], self.d), 'activation': input_layers[0][1]}
+		output_layers.append(first_layer)
+
+		for i, layer in enumerate(input_layers[1:]):
+			shape = (layer[0], output_layers[i]['shape'][0])
+			activation = layer[1]
+			next_layer = {'shape': shape, 'activation': activation}
+			output_layers.append(next_layer)
 
 		if self.verbose:
 			print()
-			print(f'Layers and activation functions of our {len(layers)}-Layer Network:')
-			for k, v in output_layers.items():
-				print(f'- {k} \t\t shape: {v["shape"]} \t activation: {v["activation"]}')
+			print(f'Layers and activation functions of our {len(input_layers)}-Layer Network:')
+			for i, layer in enumerate(output_layers):
+				print(f'- layer{i+1} \t\t shape: {layer["shape"]} \t activation: {layer["activation"]}')
 
 		return output_layers
 
 	def __he_initialization(self):
 		""" Adds weight matrix, bias matrix and other parameters to each layer"""
-		for layer in self.layers.values():
+		# for layer in self.layers.values():
+		for layer in self.layers:
 			shape = layer['shape']
+			print(shape)
 
 			# Initialize as Gaussian random values with 0 mean and 1/sqrt(d) stdev.
 			# W = np.random.normal(0, 1 / np.sqrt(shape[1]), size=shape)
@@ -242,19 +247,25 @@ class KLayerNetwork():
 		return np.maximum(s, 0)
 
 	def __evaluate_classifier(self, X):
-		X_copy = np.copy(X)
+		s = np.copy(X)
 		Hs = list()
-		for layer in self.layers.values():
+		# for layer in self.layers.values():
+		for layer in self.layers:
 			W, b = layer['W'], layer['b']
 			activation = layer['activation']
 			activation_function  = layer['activation_function']
 			print()
-			print()
+			print('W.shape')
 			print(W.shape)
 			print(b.shape)
-			print(X_copy.shape)
+			print(s.shape)
 			if activation == 'relu':
-				s = np.dot(W, X_copy) + b
+				print()
+				print('relu')
+				print(W.shape)
+				print(s.shape)
+				print(b.shape)
+				s = np.dot(W, s) + b
 				H = activation_function(s)
 				Hs.append(s)
 				if self.verbose > 1:
@@ -262,8 +273,15 @@ class KLayerNetwork():
 					print(f'Shape of s:\t\t{s.shape}')
 					print(f'Shape of H:\t\t{H.shape}')
 			else:
-				s = np.dot(W, X_copy) + b
-				P = activation_function(s)
+				print()
+				print('softmax')
+				print(W.shape)
+				print(s.shape)
+				print(b.shape)
+				tmp = np.dot(W, s) + b
+				print()
+				print(f'Shape of tmp:\t{tmp.shape}')
+				P = activation_function(tmp)
 				if self.verbose > 1:
 					print()
 					print(f'Shape of s:\t\t{s.shape}')
@@ -272,7 +290,7 @@ class KLayerNetwork():
 		if self.verbose > 1:
 			print()
 			print(f'Length of Hs:\t\t{len(Hs)}')
-			print(f'Shape of last H:\t\t{H.shape}')
+			print(f'Shape of last H:\t{H.shape}')
 			print(f'Shape of P:\t\t{P.shape}')
 
 		return Hs, P
@@ -319,36 +337,53 @@ class KLayerNetwork():
 
 		return count / N
 
+	def __update_params(self, gradients, eta):
+		print(self.layers[1]['W'])
+
+		# for i in range(len(self.layers)):
+		# for layer in self.layers.values():
+		for layer in self.layers:
+			print(len(layer))
+			for param in self.params:
+				print(param)
+				print(layer[param])
+				layer[param] -= eta * gradients[param]
+
+				# self.W1 -= eta * grad_W1
+				# self.b1 -= eta * grad_b1
+				# self.W2 -= eta * grad_W2
+				# self.b2 -= eta * grad_b2
+
+		print(self.layers[1]['W'])
+
+		return
+
 	def compute_gradients(self, X_batch, Y_batch, our_lambda):
 		N = X_batch.shape[1]
 
 		gradients = dict()
-		gradients['W'] = [np.zeros(layer['W'].shape) for layer in self.layers.values()]
-		gradients['b'] = [np.zeros(layer['b'].shape) for layer in self.layers.values()]
-		print(len(gradients['W']))
-		print(len(gradients['b']))
+		# gradients['W'] = [np.zeros(layer['W'].shape) for layer in self.layers.values()]
+		# gradients['b'] = [np.zeros(layer['b'].shape) for layer in self.layers.values()]
+		gradients['W'] = [np.zeros(layer['W'].shape) for layer in self.layers]
+		gradients['b'] = [np.zeros(layer['b'].shape) for layer in self.layers]
 
 		# 1) evalutate the network (the forward pass)
-		print(X_batch.shape)
+		print('\nX_batch.shape: ', X_batch.shape)
 		H_batch, P_batch = self.__evaluate_classifier(X_batch)
 
 		# 2) compute the gradients (the backward pass). Page 49 in Lecture4.pdf
 		G_batch = -(Y_batch - P_batch)
 
 		# Backwards as per page 36 in Lecture4.pdf ("for l=k, k-1, ..., 2").
-		print(len(self.layers))
+		# tmp_layers = list(self.layers.values())
 		for l in range(len(self.layers) - 1, 0, -1):
-			print('l')
-			print(l)
+			print('l: ', l)
 
 			gradients['W'][l] = (1 / N) * np.dot(G_batch, H_batch[l-1].T) + \
 			(2 * our_lambda * self.layers[l]['W'])
 
 			gradients['b'][l] = np.reshape((1 / N) * \
 			np.dot(G_batch, np.ones(N)), (self.layers[l]['b'].shape[0], 1))
-
-			# grad_W2 = (1 / N) * np.dot(G_batch, H_batch.T) + (2 * our_lambda * self.W2)
-			# grad_b2 = np.reshape((1 / N) * np.dot(G_batch, np.ones(N)), (K, 1))
 
 			G_batch = np.dot(self.layers[l]['W'].T, G_batch)
 			H_batch[l-1] = np.maximum(H_batch, 0)
@@ -359,7 +394,8 @@ class KLayerNetwork():
 		# And now for the first layer, which was left out.
 		gradients['W'][0] = (1 / N) * np.dot(G_batch, X_batch.T) + \
 		(our_lambda * self.layers[0]['W'])
-		gradients['b'][0] = np.reshape((1 / N) * np.dot(G_batch, np.ones(N)), self.layers[0]['b'].shape)
+		gradients['b'][0] = np.reshape((1 / N) * \
+		np.dot(G_batch, np.ones(N)), self.layers[0]['b'].shape)
 
 		return gradients
 
@@ -411,10 +447,10 @@ class KLayerNetwork():
 
 		return Ws['W1'], bs['b1'], Ws['W2'], bs['b2']
 
-	def mini_batch_gradient_descent(self, X, Y, our_lambda=0, n_batch=100, eta_min=1e-5, eta_max=1e-1, n_s=500, n_epochs=20):
+	def mini_batch_gradient_descent(self, X, Y, our_lambda=0, batch_size=100, eta_min=1e-5, eta_max=1e-1, n_s=500, n_epochs=20):
 		""" Learn the model by performing mini-batch gradient descent
 			our_lambda 	- regularization term
-			n_batch 	- number of examples per mini-batch
+			batch_size 	- number of examples per mini-batch
 			eta_min		- minimum learning rate
 			eta_max		- maximum learning rate
 			n_s			- step size
@@ -431,25 +467,21 @@ class KLayerNetwork():
 		losses['train'], costs['train'] = np.zeros(n_epochs), np.zeros(n_epochs)
 		losses['val'], costs['val'] = np.zeros(n_epochs), np.zeros(n_epochs)
 
+		# Get the number of batches needed given the input batch size.
+		n_batch = int(np.floor(X.shape[1] / batch_size))
 		eta = eta_min
-
 		t = 0
 		for n in range(n_epochs):
 			for i in range(n_batch):
-				N = int(X.shape[1] / n_batch)
-				print('N')
-				print(N)
-				i_start = (i) * N
-				i_end = (i + 1) * N
-
-				print(i_start)
-				print(i_end)
+				i_start = (i) * batch_size
+				i_end = (i + 1) * batch_size
 
 				X_batch = X[:, i_start:i_end]
 				Y_batch = Y[:, i_start:i_end]
 
-				grad_W1, grad_b1, grad_W2, grad_b2 = \
-				self.compute_gradients(X_batch, Y_batch, our_lambda)
+				gradients = self.compute_gradients(X_batch, Y_batch, our_lambda)
+
+				self.__update_params(gradients, eta)
 
 				self.W1 -= eta * grad_W1
 				self.b1 -= eta * grad_b1
@@ -667,7 +699,7 @@ def main():
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
 										datasets['train_set']['Y'],
 										our_lambda=our_lambda,
-										batch_size=n_batch,
+										batch_size=batch_size,
 										eta_min=eta_min,
 										eta_max=eta_max,
 										n_s=n_s,
