@@ -199,40 +199,25 @@ class KLayerNetwork():
 
 	def __he_initialization(self):
 		""" Adds weight matrix, bias matrix and other parameters to each layer"""
-		# for layer in self.layers.values():
 		for layer in self.layers:
 			shape = layer['shape']
-			print(shape)
 
 			# Initialize as Gaussian random values with 0 mean and 1/sqrt(d) stdev.
-			# W = np.random.normal(0, 1 / np.sqrt(shape[1]), size=shape)
-			# self.Ws.append(W)
 			layer['W'] = np.random.normal(0, 1 / np.sqrt(shape[1]), size=shape)
 
 			# "Set biases equal to zero"
-			# b = np.zeros((shape[0], 1)) # ?
-			# self.bs.append(b)
 			layer['b'] = np.zeros((shape[0], 1)) # ?
 
-			# gamma = np.ones((shape[0], 1))
-			# self.gammas.append(gamma)
 			layer['gamma'] = np.ones((shape[0], 1))
 
-			# beta = np.zeros((shape[0], 1))
-			# self.betas.append(beta)
 			layer['beta'] = np.zeros((shape[0], 1))
 
-			# mu_av = np.zeros((shape[0], 1))
-			# self.mu_avs.append(mu_av)
 			layer['mu_av'] = np.zeros((shape[0], 1))
 
-			# v_av = np.zeros((shape[0], 1))
-			# self.v_avs.append(v_av)
 			layer['v_av'] = np.zeros((shape[0], 1))
 
 			activation = layer['activation']
 			activation_function = self.activation_functions[activation]
-			# self.activations.append(activation_function)
 			layer['activation_function'] = activation_function
 
 		return
@@ -338,23 +323,9 @@ class KLayerNetwork():
 		return count / N
 
 	def __update_params(self, gradients, eta):
-		print(self.layers[1]['W'])
-
-		# for i in range(len(self.layers)):
-		# for layer in self.layers.values():
-		for layer in self.layers:
-			print(len(layer))
+		for i, layer in enumerate(self.layers):
 			for param in self.params:
-				print(param)
-				print(layer[param])
-				layer[param] -= eta * gradients[param]
-
-				# self.W1 -= eta * grad_W1
-				# self.b1 -= eta * grad_b1
-				# self.W2 -= eta * grad_W2
-				# self.b2 -= eta * grad_b2
-
-		print(self.layers[1]['W'])
+				layer[param] -= eta * gradients[param][i]
 
 		return
 
@@ -378,7 +349,6 @@ class KLayerNetwork():
 		# tmp_layers = list(self.layers.values())
 		for l in range(len(self.layers) - 1, 0, -1):
 			print('l: ', l)
-
 			gradients['W'][l] = (1 / N) * np.dot(G_batch, H_batch[l-1].T) + \
 			(2 * our_lambda * self.layers[l]['W'])
 
@@ -386,12 +356,12 @@ class KLayerNetwork():
 			np.dot(G_batch, np.ones(N)), (self.layers[l]['b'].shape[0], 1))
 
 			G_batch = np.dot(self.layers[l]['W'].T, G_batch)
-			H_batch[l-1] = np.maximum(H_batch, 0)
+			H_batch[l-1] = np.maximum(H_batch[l-1], 0)
 
 			# Indicator function on H_batch to yield only values larger than 0.
 			G_batch = np.multiply(G_batch, H_batch[l-1] > 0)
 
-		# And now for the first layer, which was left out.
+		# And now for the first layer, which was left out of the loop.
 		gradients['W'][0] = (1 / N) * np.dot(G_batch, X_batch.T) + \
 		(our_lambda * self.layers[0]['W'])
 		gradients['b'][0] = np.reshape((1 / N) * \
@@ -482,11 +452,6 @@ class KLayerNetwork():
 				gradients = self.compute_gradients(X_batch, Y_batch, our_lambda)
 
 				self.__update_params(gradients, eta)
-
-				self.W1 -= eta * grad_W1
-				self.b1 -= eta * grad_b1
-				self.W2 -= eta * grad_W2
-				self.b2 -= eta * grad_b2
 
 				# Equations (14) and (15).
 				if t <= n_s:
