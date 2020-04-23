@@ -149,6 +149,29 @@ def plot_three_subplots(costs, losses, accuracies, title, show=False):
 	return
 
 
+def check_gradients_similar(grads_A, grads_B):
+	# From the assignment PDF: "If all these absolutes difference are small
+	# (<1e-6), then they have produced the same result.
+	# np.allclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False)[source]
+	print(len(grads_A))
+
+	print()
+	print('grad_W1')
+	print(grad_W1)
+	print('grad_W1_num')
+	print(grad_W1_num)
+	print()
+	print('grad_W2')
+	print(grad_W2[:5, :20])
+	print('grad_W2_num')
+	print(grad_W2_num[:5, :20])
+	print()
+	print(f'All close: {np.allclose(grad_W1, grad_W1_num, atol=atol)}')
+	print(f'All close: {np.allclose(grad_W2, grad_W2_num, atol=atol)}')
+	# WRITE: With atol 1e-04 we get all to be close.
+	return
+
+
 class KLayerNetwork():
 	""" K-layer network classifier based on mini-batch gradient descent """
 
@@ -239,44 +262,44 @@ class KLayerNetwork():
 			W, b = layer['W'], layer['b']
 			activation = layer['activation']
 			activation_function  = layer['activation_function']
-			print()
-			print('W.shape')
-			print(W.shape)
-			print(b.shape)
-			print(s.shape)
+			# print()
+			# print('W.shape')
+			# print(W.shape)
+			# print(b.shape)
+			# print(s.shape)
 			if activation == 'relu':
-				print()
-				print('relu')
-				print(W.shape)
-				print(s.shape)
-				print(b.shape)
+				# print()
+				# print('relu')
+				# print(W.shape)
+				# print(s.shape)
+				# print(b.shape)
 				s = np.dot(W, s) + b
 				H = activation_function(s)
 				Hs.append(s)
-				if self.verbose > 1:
-					print()
-					print(f'Shape of s:\t\t{s.shape}')
-					print(f'Shape of H:\t\t{H.shape}')
+				# if self.verbose > 1:
+				# 	print()
+				# 	print(f'Shape of s:\t\t{s.shape}')
+				# 	print(f'Shape of H:\t\t{H.shape}')
 			else:
-				print()
-				print('softmax')
-				print(W.shape)
-				print(s.shape)
-				print(b.shape)
+				# print()
+				# print('softmax')
+				# print(W.shape)
+				# print(s.shape)
+				# print(b.shape)
 				tmp = np.dot(W, s) + b
-				print()
-				print(f'Shape of tmp:\t{tmp.shape}')
+				# print()
+				# print(f'Shape of tmp:\t{tmp.shape}')
 				P = activation_function(tmp)
-				if self.verbose > 1:
-					print()
-					print(f'Shape of s:\t\t{s.shape}')
-					print(f'Shape of P:\t\t{P.shape}')
-
-		if self.verbose > 1:
-			print()
-			print(f'Length of Hs:\t\t{len(Hs)}')
-			print(f'Shape of last H:\t{H.shape}')
-			print(f'Shape of P:\t\t{P.shape}')
+				# if self.verbose > 1:
+				# 	print()
+				# 	print(f'Shape of s:\t\t{s.shape}')
+				# 	print(f'Shape of P:\t\t{P.shape}')
+		#
+		# if self.verbose > 1:
+		# 	print()
+		# 	print(f'Length of Hs:\t\t{len(Hs)}')
+		# 	print(f'Shape of last H:\t{H.shape}')
+		# 	print(f'Shape of P:\t\t{P.shape}')
 
 		return Hs, P
 
@@ -291,10 +314,6 @@ class KLayerNetwork():
 
 		# If label is encoded as one-hot repr., then cross entropy is -log(yTp).
 		loss = (1 / N) * (-np.sum(Y * np.log(p)))
-		loss2 = np.float64(1 / N) * (-np.sum(Y * np.log(p)))
-
-		print(loss == loss2)
-		np.array_equal(loss, loss2)
 
 		weights_squared = 0.0
 		for layer in self.layers:
@@ -314,9 +333,6 @@ class KLayerNetwork():
 			- y is a vector pf ground truth labels of length N
 			Returns the accuracy. which is a scalar. """
 		N = X.shape[1]
-		print()
-		print(X.shape)
-		print(y.shape)
 		highest_P = np.argmax(self.__evaluate_classifier(X)[1], axis=0)
 		count = highest_P.T[highest_P == np.asarray(y)].shape[0]
 
@@ -339,7 +355,6 @@ class KLayerNetwork():
 		gradients['b'] = [np.zeros(layer['b'].shape) for layer in self.layers]
 
 		# 1) evalutate the network (the forward pass)
-		print('\nX_batch.shape: ', X_batch.shape)
 		H_batch, P_batch = self.__evaluate_classifier(X_batch)
 
 		# 2) compute the gradients (the backward pass). Page 49 in Lecture4.pdf
@@ -348,7 +363,6 @@ class KLayerNetwork():
 		# Backwards as per page 36 in Lecture4.pdf ("for l=k, k-1, ..., 2").
 		# tmp_layers = list(self.layers.values())
 		for l in range(len(self.layers) - 1, 0, -1):
-			print('l: ', l)
 			gradients['W'][l] = (1 / N) * np.dot(G_batch, H_batch[l-1].T) + \
 			(2 * our_lambda * self.layers[l]['W'])
 
@@ -518,16 +532,19 @@ class KLayerNetwork():
 def main():
 	seed = 12345
 	np.random.seed(seed)
-	test_numerically = False
+	all = False
 	sanity_check = False # Deprecated
-	assignment_3 = True
+	exercise_1_2_layer = True
+	exercise_1_3_layer = False
+	exercise_1_4_layer = False
+	assignment_3 = False
 
 	print()
 	print("------------------------ Loading dataset ------------------------")
 	datasets_folder = "Datasets/cifar-10-batches-py/"
 	labels = unpickle(datasets_folder + "batches.meta")[b'label_names']
 
-	if assignment_3:
+	if all:
 		num_val = 5000
 
 		# Use all available data for training. Reduce validation to num_val.
@@ -568,7 +585,153 @@ def main():
 	for dataset_name, dataset in datasets.items():
 		dataset['X'] = normalize_dataset(dataset['X'], verbose=1)
 
-	if test_numerically:
+	print()
+	print("-------------------- Instantiating classifier -------------------")
+
+	print()
+	print("---------------------- Learning classifier ----------------------")
+	# Has been deprecated. Was used to check if model could overfit. It could.
+	if sanity_check:
+		print()
+		print("------------------------ Sanity check ------------------------")
+		our_lambda = 0.01
+		n_epochs = 60
+		n_batch = 100
+		eta = 0.001
+		n_s = 500
+		decay_factor = 1.0
+		num_nodes = 50 # Number of nodes in the hidden layer
+		test_numerically = False
+		sanity_check = False
+		fig_3 = False
+		fig_4 = True
+		clf = KLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
+		# See if we can overfit, i.e. achieve a very small loss on the training
+		# data by training on the following 100 examples.
+		num_pixels = 3072
+		num_images = 100
+		train_set['X'] = train_set['X'][:num_pixels, :num_images]
+		train_set['Y'] = train_set['Y'][:num_pixels, :num_images]
+
+	if exercise_1_2_layer:
+		print()
+		print("-------------------- Running gradient tests ---------------------")
+		num_pixels = 10
+		num_images = 2
+		atol = 1e-05
+
+		train_set['X'] = train_set['X'][:num_pixels, :num_images]
+		train_set['Y'] = train_set['Y'][:num_pixels, :num_images]
+
+		X_batch = train_set['X']
+		Y_batch = train_set['Y']
+
+		layers = [(50, 'relu'), (10, 'softmax')]
+		alpha = 0.9
+		batch_norm = False
+
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=0)
+
+		our_lambda = 0
+
+		analytical_gradients = clf.compute_gradients(X_batch, Y_batch, our_lambda)
+		numerical_gradients = clf.compute_gradients_num(X_batch, Y_batch, our_lambda)
+
+		check_gradients_similar(analytical_gradients, numerical_gradients, atol=atol)
+		quit()
+
+	if exercise_1_3_layer:
+		print()
+		print("-------------------------- Assignment 3 -------------------------")
+		# shapes = [((50, 3072)), (10, 50)]
+		# activations = ['relu', 'softmax']
+		layers = [(50, 'relu'), (10, 'softmax')]
+		alpha = 0.9
+		batch_norm = False
+
+		# clf = KLayerNetwork(labels, datasets, shapes, activations, alpha,
+		# 					batch_norm, verbose=1)
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=2)
+
+		our_lambda = 0.00
+		n_epochs = 10
+		batch_size = 100
+		eta_min = 1e-5
+		eta_max = 1e-1
+		n_s = 500
+
+		accuracies, costs, losses, _ = \
+		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+										datasets['train_set']['Y'],
+										our_lambda=our_lambda,
+										batch_size=batch_size,
+										eta_min=eta_min,
+										eta_max=eta_max,
+										n_s=n_s,
+										n_epochs=n_epochs)
+
+		tracc = round(accuracies["train"][-1], 4)
+		vacc = round(accuracies["val"][-1], 4)
+		teacc = round(accuracies["test"][-1], 4)
+
+		print()
+		print(f'Final training data accuracy:\t\t{tracc}')
+		print(f'Final validation data accuracy:\t\t{vacc}')
+		print(f'Final test data accuracy:\t\t{teacc}')
+
+		title = f'lambda{our_lambda}_batch_size{batch_size}_n-epochs{n_epochs}_n-s{n_s}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+
+		plot_three_subplots(costs=(costs['train'], costs['val']),
+							losses=(losses['train'], losses['val']),
+							accuracies=(accuracies['train'], accuracies['val']),
+							title='fig3_' + title)
+
+	if exercise_1_4_layer:
+		print()
+		print("-------------------------- Assignment 3 -------------------------")
+		# shapes = [((50, 3072)), (10, 50)]
+		# activations = ['relu', 'softmax']
+		layers = [(50, 'relu'), (10, 'softmax')]
+		alpha = 0.9
+		batch_norm = False
+
+		# clf = KLayerNetwork(labels, datasets, shapes, activations, alpha,
+		# 					batch_norm, verbose=1)
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=2)
+
+		our_lambda = 0.00
+		n_epochs = 10
+		batch_size = 100
+		eta_min = 1e-5
+		eta_max = 1e-1
+		n_s = 500
+
+		accuracies, costs, losses, _ = \
+		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+										datasets['train_set']['Y'],
+										our_lambda=our_lambda,
+										batch_size=batch_size,
+										eta_min=eta_min,
+										eta_max=eta_max,
+										n_s=n_s,
+										n_epochs=n_epochs)
+
+		tracc = round(accuracies["train"][-1], 4)
+		vacc = round(accuracies["val"][-1], 4)
+		teacc = round(accuracies["test"][-1], 4)
+
+		print()
+		print(f'Final training data accuracy:\t\t{tracc}')
+		print(f'Final validation data accuracy:\t\t{vacc}')
+		print(f'Final test data accuracy:\t\t{teacc}')
+
+		title = f'lambda{our_lambda}_batch_size{batch_size}_n-epochs{n_epochs}_n-s{n_s}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+
+		plot_three_subplots(costs=(costs['train'], costs['val']),
+							losses=(losses['train'], losses['val']),
+							accuracies=(accuracies['train'], accuracies['val']),
+							title='fig3_' + title)
+
 		print()
 		print("-------------------- Running gradient tests ---------------------")
 		our_lambda = 0.01
@@ -612,46 +775,14 @@ def main():
 		# WRITE: With atol 1e-04 we get all to be close.
 		quit()
 
-	print()
-	print("-------------------- Instantiating classifier -------------------")
-
-	print()
-	print("---------------------- Learning classifier ----------------------")
-	# Has been deprecated. Was used to check if model could overfit. It could.
-	if sanity_check:
-		print()
-		print("------------------------ Sanity check ------------------------")
-		our_lambda = 0.01
-		n_epochs = 60
-		n_batch = 100
-		eta = 0.001
-		n_s = 500
-		decay_factor = 1.0
-		num_nodes = 50 # Number of nodes in the hidden layer
-		test_numerically = False
-		sanity_check = False
-		fig_3 = False
-		fig_4 = True
-		clf = KLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
-		# See if we can overfit, i.e. achieve a very small loss on the training
-		# data by training on the following 100 examples.
-		num_pixels = 3072
-		num_images = 100
-		train_set['X'] = train_set['X'][:num_pixels, :num_images]
-		train_set['Y'] = train_set['Y'][:num_pixels, :num_images]
-
 	if assignment_3:
 		print()
 		print("-------------------------- Assignment 3 -------------------------")
-		# shapes = [((50, 3072)), (10, 50)]
-		# activations = ['relu', 'softmax']
 		layers = [(50, 'relu'), (10, 'softmax')]
 		alpha = 0.9
 		batch_norm = False
 
-		# clf = KLayerNetwork(labels, datasets, shapes, activations, alpha,
-		# 					batch_norm, verbose=1)
-		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=2)
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=1)
 
 		our_lambda = 0.00
 		n_epochs = 10
@@ -679,13 +810,12 @@ def main():
 		print(f'Final validation data accuracy:\t\t{vacc}')
 		print(f'Final test data accuracy:\t\t{teacc}')
 
-		title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_n-s{n_s}_m{num_nodes}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+		title = f'lambda{our_lambda}_batch_size{batch_size}_n-epochs{n_epochs}_n-s{n_s}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
 
 		plot_three_subplots(costs=(costs['train'], costs['val']),
 							losses=(losses['train'], losses['val']),
 							accuracies=(accuracies['train'], accuracies['val']),
 							title='fig3_' + title)
-
 
 	print()
 
