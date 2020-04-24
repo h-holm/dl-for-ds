@@ -149,29 +149,6 @@ def plot_three_subplots(costs, losses, accuracies, title, show=False):
 	return
 
 
-def check_gradients_similar(grads_A, grads_B):
-	# From the assignment PDF: "If all these absolutes difference are small
-	# (<1e-6), then they have produced the same result.
-	# np.allclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False)[source]
-	print(len(grads_A))
-
-	print()
-	print('grad_W1')
-	print(grad_W1)
-	print('grad_W1_num')
-	print(grad_W1_num)
-	print()
-	print('grad_W2')
-	print(grad_W2[:5, :20])
-	print('grad_W2_num')
-	print(grad_W2_num[:5, :20])
-	print()
-	print(f'All close: {np.allclose(grad_W1, grad_W1_num, atol=atol)}')
-	print(f'All close: {np.allclose(grad_W2, grad_W2_num, atol=atol)}')
-	# WRITE: With atol 1e-04 we get all to be close.
-	return
-
-
 class KLayerNetwork():
 	""" K-layer network classifier based on mini-batch gradient descent """
 
@@ -342,15 +319,12 @@ class KLayerNetwork():
 		for i, layer in enumerate(self.layers):
 			for param in self.params:
 				layer[param] -= eta * gradients[param][i]
-
 		return
 
 	def compute_gradients(self, X_batch, Y_batch, our_lambda):
 		N = X_batch.shape[1]
 
 		gradients = dict()
-		# gradients['W'] = [np.zeros(layer['W'].shape) for layer in self.layers.values()]
-		# gradients['b'] = [np.zeros(layer['b'].shape) for layer in self.layers.values()]
 		gradients['W'] = [np.zeros(layer['W'].shape) for layer in self.layers]
 		gradients['b'] = [np.zeros(layer['b'].shape) for layer in self.layers]
 
@@ -373,7 +347,8 @@ class KLayerNetwork():
 			H_batch[l-1] = np.maximum(H_batch[l-1], 0)
 
 			# Indicator function on H_batch to yield only values larger than 0.
-			G_batch = np.multiply(G_batch, H_batch[l-1] > 0)
+			# COMMENT OUT IF TESTING GRADIENTS
+			# G_batch = np.multiply(G_batch, H_batch[l-1] > 0)
 
 		# And now for the first layer, which was left out of the loop.
 		gradients['W'][0] = (1 / N) * np.dot(G_batch, X_batch.T) + \
@@ -383,53 +358,65 @@ class KLayerNetwork():
 
 		return gradients
 
-	def compute_gradients_num(self, X_batch, Y_batch, our_lambda=0, h=1e-5):
+	def compute_gradients_num(self, X_batch, Y_batch, our_lambda=0.0, h=1e-7):
 		""" Compute gradients of the weight and bias numerically.
-			- X_batch is a D x N matrix.
-			- Y_batch is a C x N one-hot-encoding vector.
+			- X_batch is a d x N matrix.
+			- Y_batch is a K x N one-hot-encoding vector.
 			- our_lambda is the regularization term ("lambda" is reserved).
-			- h is a marginal offset.
+			- h is the marginal offset.
 			Returns the gradients of the weight and bias. """
 
-		bs, Ws = dict(), dict()
+		gradients = dict()
+		for param in self.params:
+			gradients[param] = list()
 
-		for i in range(1, 3):
-			b_string = 'b' + str(i)
-			W_string = 'W' + str(i)
+		for i, layer in enumerate(self.layers):
+			for param in self.params:
+				gradients[param].append(np.zeros(layer[param].shape))
+				for j in np.ndindex(layer[param].shape):
+					old_par = layer[param][j]
+					layer[param][j] = old_par + h
+					_, cost1 = self.__compute_loss_and_cost(X_batch, Y_batch, our_lambda)
+					layer[param][j] = old_par - h
+					_, cost2 = self.__compute_loss_and_cost(X_batch, Y_batch, our_lambda)
+					layer[param][j] = old_par
+					gradients[param][i][j] = (cost1 - cost2) / (2 * h)
 
-			b = getattr(self, b_string)
-			W = getattr(self, W_string)
+		return gradients
 
-			bs[b_string] = np.zeros(b.shape)
-			Ws[W_string] = np.zeros(W.shape)
+	def check_gradients_similar(self, grads_ana, grads_num):
+		# np.allclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False)[source]
+		atols = [1e-7, 1e-6, 1e-5, 1e-4, 1e-3]
 
-			b_try = np.copy(b)
-			W_try = np.copy(W)
+		for atol in atols:
+			results = list()
+			print()
+			for i in range(len(self.layers)):
+				for param in self.params:
+					if self.verbose:
+						print()
+						print('------------------------------------------------')
+						print()
+						print(f'layer[{i}][{param}]')
+						print(self.layers[i][param][:10, :10])
+						print(f'Actual shape is: {self.layers[i][param].shape}')
+						print()
+						print(f'grads_ana[{param}][{i}]')
+						print(grads_ana[param][i][:10, :10])
+						print(f'Actual shape is: {grads_ana[param][i].shape}')
+						print()
+						print(f'grads_num[{param}][{i}]')
+						print(grads_num[param][i][:10, :10])
+						print(f'Actual shape is: {grads_num[param][i].shape}')
+					all_close = np.allclose(grads_ana[param][i], grads_num[param][i], atol=atol)
+					results.append(all_close)
+					print(f'All close for absolute tolerance {atol}: {all_close}')
 
-			for j in range(len(b)):
-				b = b_try[:]
-				b[j] -= h
-				# b[j] += h
-				_, c1 = self.__compute_loss_and_cost(X_batch, Y_batch, our_lambda)
-				getattr(self, b_string)[j] += (2 * h)
-				# getattr(self, b_string)[j] -= (2 * h)
-				_, c2 = self.__compute_loss_and_cost(X_batch, Y_batch, our_lambda)
-				bs[b_string][j] = (c2 - c1) / (2 * h)
+			# Break prematurely if all are close.
+			if all(result for result in results):
+				break
 
-			# Given the shape of an array, an ndindex instance iterates over the
-			# N-dimensional index of the array. At each iteration a tuple of indices
-			# is returned, the last dimension is iterated over first.
-			for j in np.ndindex(W.shape):
-				self.W = W_try[:, :]
-				self.W[j] -= h
-				# self.W[j] += h
-				_, c1 = self.__compute_loss_and_cost(X_batch, Y_batch, our_lambda)
-				getattr(self, W_string)[j] += (2 * h)
-				# getattr(self, W_string)[j] -= (2 * h)
-				_, c2 = self.__compute_loss_and_cost(X_batch, Y_batch, our_lambda)
-				Ws[W_string][j] = (c2 - c1) / (2 * h)
-
-		return Ws['W1'], bs['b1'], Ws['W2'], bs['b2']
+		return
 
 	def mini_batch_gradient_descent(self, X, Y, our_lambda=0, batch_size=100, eta_min=1e-5, eta_max=1e-1, n_s=500, n_epochs=20):
 		""" Learn the model by performing mini-batch gradient descent
@@ -534,10 +521,14 @@ def main():
 	np.random.seed(seed)
 	all = False
 	sanity_check = False # Deprecated
+
+	# These are for testing numerical vs analytical gradients. Remember to
+	# uncomment one of the rows in the analytical calculations.
 	exercise_1_2_layer = True
-	exercise_1_3_layer = False
-	exercise_1_4_layer = False
-	assignment_3 = False
+	exercise_1_3_layer = True
+	exercise_1_4_layer = True
+
+	exercise_2_2_layer = True
 
 	print()
 	print("------------------------ Loading dataset ------------------------")
@@ -615,10 +606,9 @@ def main():
 
 	if exercise_1_2_layer:
 		print()
-		print("-------------------- Running gradient tests ---------------------")
+		print("---------------- Running gradient tests: 2-layer ----------------")
 		num_pixels = 10
 		num_images = 2
-		atol = 1e-05
 
 		train_set['X'] = train_set['X'][:num_pixels, :num_images]
 		train_set['Y'] = train_set['Y'][:num_pixels, :num_images]
@@ -632,114 +622,19 @@ def main():
 
 		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=0)
 
-		our_lambda = 0
+		our_lambda = 0.0
+		h = 1e-7
 
 		analytical_gradients = clf.compute_gradients(X_batch, Y_batch, our_lambda)
-		numerical_gradients = clf.compute_gradients_num(X_batch, Y_batch, our_lambda)
+		numerical_gradients = clf.compute_gradients_num(X_batch, Y_batch, our_lambda, h)
 
-		check_gradients_similar(analytical_gradients, numerical_gradients, atol=atol)
-		quit()
+		clf.check_gradients_similar(analytical_gradients, numerical_gradients)
 
 	if exercise_1_3_layer:
 		print()
-		print("-------------------------- Assignment 3 -------------------------")
-		# shapes = [((50, 3072)), (10, 50)]
-		# activations = ['relu', 'softmax']
-		layers = [(50, 'relu'), (10, 'softmax')]
-		alpha = 0.9
-		batch_norm = False
-
-		# clf = KLayerNetwork(labels, datasets, shapes, activations, alpha,
-		# 					batch_norm, verbose=1)
-		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=2)
-
-		our_lambda = 0.00
-		n_epochs = 10
-		batch_size = 100
-		eta_min = 1e-5
-		eta_max = 1e-1
-		n_s = 500
-
-		accuracies, costs, losses, _ = \
-		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
-										datasets['train_set']['Y'],
-										our_lambda=our_lambda,
-										batch_size=batch_size,
-										eta_min=eta_min,
-										eta_max=eta_max,
-										n_s=n_s,
-										n_epochs=n_epochs)
-
-		tracc = round(accuracies["train"][-1], 4)
-		vacc = round(accuracies["val"][-1], 4)
-		teacc = round(accuracies["test"][-1], 4)
-
-		print()
-		print(f'Final training data accuracy:\t\t{tracc}')
-		print(f'Final validation data accuracy:\t\t{vacc}')
-		print(f'Final test data accuracy:\t\t{teacc}')
-
-		title = f'lambda{our_lambda}_batch_size{batch_size}_n-epochs{n_epochs}_n-s{n_s}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
-
-		plot_three_subplots(costs=(costs['train'], costs['val']),
-							losses=(losses['train'], losses['val']),
-							accuracies=(accuracies['train'], accuracies['val']),
-							title='fig3_' + title)
-
-	if exercise_1_4_layer:
-		print()
-		print("-------------------------- Assignment 3 -------------------------")
-		# shapes = [((50, 3072)), (10, 50)]
-		# activations = ['relu', 'softmax']
-		layers = [(50, 'relu'), (10, 'softmax')]
-		alpha = 0.9
-		batch_norm = False
-
-		# clf = KLayerNetwork(labels, datasets, shapes, activations, alpha,
-		# 					batch_norm, verbose=1)
-		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=2)
-
-		our_lambda = 0.00
-		n_epochs = 10
-		batch_size = 100
-		eta_min = 1e-5
-		eta_max = 1e-1
-		n_s = 500
-
-		accuracies, costs, losses, _ = \
-		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
-										datasets['train_set']['Y'],
-										our_lambda=our_lambda,
-										batch_size=batch_size,
-										eta_min=eta_min,
-										eta_max=eta_max,
-										n_s=n_s,
-										n_epochs=n_epochs)
-
-		tracc = round(accuracies["train"][-1], 4)
-		vacc = round(accuracies["val"][-1], 4)
-		teacc = round(accuracies["test"][-1], 4)
-
-		print()
-		print(f'Final training data accuracy:\t\t{tracc}')
-		print(f'Final validation data accuracy:\t\t{vacc}')
-		print(f'Final test data accuracy:\t\t{teacc}')
-
-		title = f'lambda{our_lambda}_batch_size{batch_size}_n-epochs{n_epochs}_n-s{n_s}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
-
-		plot_three_subplots(costs=(costs['train'], costs['val']),
-							losses=(losses['train'], losses['val']),
-							accuracies=(accuracies['train'], accuracies['val']),
-							title='fig3_' + title)
-
-		print()
-		print("-------------------- Running gradient tests ---------------------")
-		our_lambda = 0.01
-		num_nodes = 50 # Number of nodes in the hidden layer
-
-		num_pixels = 20
-		num_images = 10
-		atol = 1e-05
+		print("---------------- Running gradient tests: 3-layer ----------------")
+		num_pixels = 10
+		num_images = 2
 
 		train_set['X'] = train_set['X'][:num_pixels, :num_images]
 		train_set['Y'] = train_set['Y'][:num_pixels, :num_images]
@@ -747,35 +642,47 @@ def main():
 		X_batch = train_set['X']
 		Y_batch = train_set['Y']
 
-		clf = KLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
+		layers = [(50, 'relu'), (40, 'relu'), (10, 'softmax')]
+		alpha = 0.9
+		batch_norm = False
 
-		grad_W1, grad_b1, grad_W2, grad_b2 = clf.compute_gradients(X_batch,
-																   Y_batch,
-																   our_lambda=0)
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=0)
 
-		grad_W1_num, grad_b1_num, grad_W2_num, grad_b2_num = \
-		clf.compute_gradients_num(X_batch, Y_batch, our_lambda=0)
+		our_lambda = 0.0
+		h = 1e-7
 
-		# From the assignment PDF: "If all these absolutes difference are small
-		# (<1e-6), then they have produced the same result.
-		# np.allclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False)[source]
+		analytical_gradients = clf.compute_gradients(X_batch, Y_batch, our_lambda)
+		numerical_gradients = clf.compute_gradients_num(X_batch, Y_batch, our_lambda, h)
+
+		clf.check_gradients_similar(analytical_gradients, numerical_gradients)
+
+	if exercise_1_4_layer:
 		print()
-		print('grad_W1')
-		print(grad_W1)
-		print('grad_W1_num')
-		print(grad_W1_num)
-		print()
-		print('grad_W2')
-		print(grad_W2[:5, :20])
-		print('grad_W2_num')
-		print(grad_W2_num[:5, :20])
-		print()
-		print(f'All close: {np.allclose(grad_W1, grad_W1_num, atol=atol)}')
-		print(f'All close: {np.allclose(grad_W2, grad_W2_num, atol=atol)}')
-		# WRITE: With atol 1e-04 we get all to be close.
-		quit()
+		print("---------------- Running gradient tests: 4-layer ----------------")
+		num_pixels = 10
+		num_images = 2
 
-	if assignment_3:
+		train_set['X'] = train_set['X'][:num_pixels, :num_images]
+		train_set['Y'] = train_set['Y'][:num_pixels, :num_images]
+
+		X_batch = train_set['X']
+		Y_batch = train_set['Y']
+
+		layers = [(50, 'relu'), (40, 'relu'), (20, 'relu'), (10, 'softmax')]
+		alpha = 0.9
+		batch_norm = False
+
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=0)
+
+		our_lambda = 0.0
+		h = 1e-7
+
+		analytical_gradients = clf.compute_gradients(X_batch, Y_batch, our_lambda)
+		numerical_gradients = clf.compute_gradients_num(X_batch, Y_batch, our_lambda, h)
+
+		clf.check_gradients_similar(analytical_gradients, numerical_gradients)
+
+	if exercise_2_2_layer:
 		print()
 		print("-------------------------- Assignment 3 -------------------------")
 		layers = [(50, 'relu'), (10, 'softmax')]
