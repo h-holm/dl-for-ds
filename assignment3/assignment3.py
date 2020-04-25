@@ -172,7 +172,6 @@ class KLayerNetwork():
 		self.verbose = verbose
 
 		self.layers = self.__create_layers(layers)
-		self.K = len(self.layers) - 1
 
 		self.__he_initialization()
 
@@ -237,6 +236,9 @@ class KLayerNetwork():
 		s = np.copy(X)
 		N = X.shape[1]
 
+		# Default values
+		s_list, mu_list, var_list, s_hat_list = None, None, None, None
+
 		if self.batch_norm:
 			# Use np.finfo(input_float_type).eps to get the machine epsilon of
 			# the input float type.
@@ -249,12 +251,13 @@ class KLayerNetwork():
 				activation_function = layer['activation_function']
 				H_list.append(s)
 				s = np.dot(W, s) + b
-				if i < self.K:
+				if i < len(self.layers) - 1:
 					s_list.append(s)
 					if is_testing:
 						s = (s - mu_av) / np.sqrt(var_av + eps)
 					else:
 						mu = np.mean(s, axis=1, keepdims=True)
+						# Page 7 in Assignment3.pdf. Compensate with (N - 1) / N
 						var = np.var(s, axis=1, keepdims=True) * np.float64((N - 1) / N)
 
 						if is_training:
@@ -270,7 +273,7 @@ class KLayerNetwork():
 					s = activation_function(np.multiply(gamma, s) + beta)
 				else:
 					P = activation_function(s)
-			return H_list, P, s_list, mu_list, var_list, s_hat_list
+
 		else:
 			H_list = list()
 			for layer in self.layers:
@@ -283,39 +286,40 @@ class KLayerNetwork():
 				else:
 					P = activation_function(np.dot(W, s) + b)
 
-			return H_list, P
+		return H_list, P, s_list, mu_list, var_list, s_hat_list
 
-	def __compute_loss_and_cost(self, X, Y, our_lambda):
+	def __compute_loss_and_cost(self, X, Y, our_lambda, is_testing=False):
 		""" Compute cost using the cross-entropy loss.
 			- each column of X corresponds to an image and X has size d x N.
 			- Y corresponds to the one-hot ground truth label matrix.
 			- our_lambda is the regularization term ("lambda" is reserved).
 			Returns the cost, which is a scalar. """
 		N = X.shape[1]
-		_, p = self.__evaluate_classifier(X)
+
+		# if self.batch_norm:
+		# 	_, p, _, _, _, _ = self.__evaluate_classifier(X, is_testing)
+		# else:
+		# 	_, p = self.__evaluate_classifier(X)
+		_, p, _, _, _, _ = self.__evaluate_classifier(X, is_testing)
 
 		# If label is encoded as one-hot repr., then cross entropy is -log(yTp).
 		loss = np.float64(1 / N) * (-np.sum(Y * np.log(p)))
 
-		weights_squared = 0.0
+		weights_squared = np.float64(0.0)
 		for layer in self.layers:
-			W = layer['W']
-			weights_squared += np.sum(np.square(W))
+			weights_squared += np.sum(np.square(layer['W']))
 
-		cost = loss + our_lambda * weights_squared
-
-		# reg = our_lambda * (np.sum(self.W1 * self.W1) + np.sum(self.W2 * self.W2))
-		# cost = loss + reg
+		cost = loss + np.float64(our_lambda) * weights_squared
 
 		return loss, cost
 
-	def __compute_accuracy(self, X, y):
+	def __compute_accuracy(self, X, y, is_testing=False):
 		""" Compute classification accuracy
 			- each column of X corresponds to an image and X has size d x N.
 			- y is a vector pf ground truth labels of length N
 			Returns the accuracy. which is a scalar. """
 		N = X.shape[1]
-		highest_P = np.argmax(self.__evaluate_classifier(X)[1], axis=0)
+		highest_P = np.argmax(self.__evaluate_classifier(X, is_testing)[1], axis=0)
 		count = highest_P.T[highest_P == np.asarray(y)].shape[0]
 
 		return count / N
@@ -326,6 +330,24 @@ class KLayerNetwork():
 				layer[param] -= eta * gradients[param][i]
 		return
 
+	def __batch_norm_back_pass(self, G_batch, S_batch, mu_batch, var_batch):
+		# Equations 31 to 37 in Assignment3.pdf.
+		eps = np.finfo(np.float64).eps
+		N = G_batch.shape[1]
+
+		sigma1 = np.power(var_batch + eps, -0.5)
+		sigma2 = np.power(var_batch + eps, -1.5)
+
+		G1 = np.multiply(G_batch, sigma1)
+		G2 = np.multiply(G_batch, sigma2)
+
+		D = S_batch - mu_batch
+		c = np.sum(np.multiply(G2, D), axis=1, keepdims=True)
+		G_batch = G1 - np.float64(1 / N) * np.sum(G1, axis=1, keepdims=True) - \
+		np.float64(1 / N) * np.multiply(D, c)
+
+		return G_batch
+
 	def compute_gradients(self, X_batch, Y_batch, our_lambda):
 		N = X_batch.shape[1]
 		gradients = dict()
@@ -334,13 +356,45 @@ class KLayerNetwork():
 
 		if self.batch_norm:
 			# 1) evalutate the network (the forward pass)
-			H_batch, P_batch, s_batch, mu_batch, var_batch, s_hat_batch = \
+			H_batch, P_batch, S_batch, mu_batch, var_batch, S_hat_batch = \
 			self.__evaluate_classifier(X_batch, is_training=True)
 
-			# 2) compute the gradients (the backward pass). Page 49 in Lecture4.pdf
+			# 2) compute the gradients (the backward pass). Page 4 in Assignment4.pdf
 			G_batch = -(Y_batch - P_batch)
 
-			grads["W"][self.k] = 1/N * G_batch@H_batch[self.k].T + 2 * labda * self.W[self.k]
+			gradients['W'][-1] = np.float64(1 / N) * np.dot(G_batch, H_batch[-1].T) \
+			+ 2 * our_lambda * self.layers[-1]['W']
+
+			gradients['b'][-1] = np.reshape(np.float64(1 / N) * \
+			np.dot(G_batch, np.ones(N)), gradients['b'][-1].shape)
+
+			G_batch = np.dot(self.layers[-1]['W'].T, G_batch)
+			H_batch[-1] = np.maximum(H_batch[-1], 0)
+			G_batch = np.multiply(G_batch, H_batch[-1] > 0)
+
+			# Backwards as per page 4 in Assignment3.pdf ("for l=k-1, k-2, ..., 1").
+			for l in range(len(self.layers) - 2, -1, -1):
+				gradients['gamma'][l] = np.reshape(np.float64(1 / N) * \
+				np.dot(np.multiply(G_batch, S_hat_batch[l]), np.ones(N)), gradients['gamma'][l].shape)
+
+				gradients['beta'][l] = np.reshape(np.float64(1 / N) * \
+				np.dot(G_batch, np.ones(N)), gradients['beta'][l].shape)
+
+				G_batch = np.multiply(G_batch, self.layers[l]['gamma'])
+				G_batch = self.__batch_norm_back_pass(G_batch, S_batch[l],
+													  mu_batch[l], var_batch[l])
+
+				gradients['W'][l] = np.float64(1 / N) * np.dot(G_batch, H_batch[l].T) \
+				+ 2 * our_lambda * self.layers[l]['W']
+
+				gradients['b'][l] = np.reshape(np.float64(1 / N) * \
+				np.dot(G_batch, np.ones(N)), gradients['b'][l].shape)
+
+				# If l > 0, propagate G_batch to the next layer.
+				if l > 0:
+					G_batch = np.dot(self.layers[l]['W'], G_batch)
+					H_batch[l] = np.maximum(H_batch[l], 0)
+					G_batch = np.multiply(G_batch, H_batch[l] > 0)
 		else:
 			# 1) evalutate the network (the forward pass)
 			H_batch, P_batch = self.__evaluate_classifier(X_batch)
@@ -423,7 +477,7 @@ class KLayerNetwork():
 						print(f'Actual shape is: {grads_num[param][i].shape}')
 					all_close = np.allclose(grads_ana[param][i], grads_num[param][i], atol=atol)
 					results.append(all_close)
-					print(f'All close for absolute tolerance {atol}: {all_close}')
+					print(f'{param}\tAll close for absolute tolerance {atol}: {all_close}')
 
 			# Break prematurely if all are close.
 			if all(result for result in results):
@@ -503,16 +557,14 @@ class KLayerNetwork():
 			accuracies['val'][n] = self.__compute_accuracy(self.data['val_set']['X'],
 														   self.data['val_set']['y'])
 			accuracies['test'][n] = self.__compute_accuracy(self.data['test_set']['X'],
-															self.data['test_set']['y'])
+															self.data['test_set']['y'],
+															is_testing=True)
 
 			if self.verbose:
 				print()
 				print(f'Loss training:\t\t{round(losses["train"][n], 4)}\t| Loss validation:\t{round(losses["val"][n], 4)}')
 				print(f'Cost training:\t\t{round(costs["train"][n], 4)}\t| Cost validation:\t{round(costs["val"][n], 4)}')
 				print(f'Accuracy training:\t{round(accuracies["train"][n], 4)}\t| Accuracy validation:\t{round(accuracies["val"][n], 4)}')
-				# print(f'Loss validation:\t{round(losses["val"][n], 4)}')
-				# print(f'Cost validation:\t{round(costs["val"][n], 4)}')
-				# print(f'Accuracy validation:\t{round(accuracies["val"][n], 4)}')
 				# print(f'Accuracy testing:\t{accuracies["test"][n]}')
 
 			# print(f'Current learning rate: {eta}')
@@ -548,7 +600,7 @@ def main():
 	exercise_2_9_layer = False
 
 	# Exercise 3: Implement Batch Normalization
-	exercise_3_batch_norm = True
+	exercise_3_2_layer = True
 
 	if exercise_2_3_layer or exercise_2_9_layer:
 		all = True
@@ -834,50 +886,31 @@ def main():
 							accuracies=(accuracies['train'], accuracies['val']),
 							title='fig3_' + title, show=True)
 
-	if exercise_3_batch_norm:
+	if exercise_3_2_layer:
 		print()
-		print("---------------- Exercise 3: batch normalization -----------------")
-		# layers = [(50, 'relu'), (30, 'relu'), (20, 'relu'), (20, 'relu'),
-		# 		  (10, 'relu'), (10, 'relu'), (10, 'relu'), (10, 'softmax')]
-		layers = [(50, 'relu'), (50, 'relu'), (10, 'softmax')]
+		print("------------------ Exercise 3: 2-layer test --------------------")
+		num_pixels = 10
+		num_images = 2
+
+		train_set['X'] = train_set['X'][:num_pixels, :num_images]
+		train_set['Y'] = train_set['Y'][:num_pixels, :num_images]
+
+		X_batch = train_set['X']
+		Y_batch = train_set['Y']
+
+		layers = [(50, 'relu'), (10, 'softmax')]
 		alpha = 0.9
 		batch_norm = True
 
-		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=1)
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=0)
 
-		our_lambda = 0.005
-		n_epochs = 20
-		batch_size = 100
-		eta_min = 1e-5
-		eta_max = 1e-1
-		# n_s = 800
-		n_s = 5 * datasets['train_set']['X'].shape[1] / 100
+		our_lambda = 0.0
+		h = 1e-7
 
-		accuracies, costs, losses, _ = \
-		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
-										datasets['train_set']['Y'],
-										our_lambda=our_lambda,
-										batch_size=batch_size,
-										eta_min=eta_min,
-										eta_max=eta_max,
-										n_s=n_s,
-										n_epochs=n_epochs)
+		analytical_gradients = clf.compute_gradients(X_batch, Y_batch, our_lambda)
+		numerical_gradients = clf.compute_gradients_num(X_batch, Y_batch, our_lambda, h)
 
-		tracc = round(accuracies["train"][-1], 4)
-		vacc = round(accuracies["val"][-1], 4)
-		teacc = round(accuracies["test"][-1], 4)
-
-		print()
-		print(f'Final training data accuracy:\t\t{tracc}')
-		print(f'Final validation data accuracy:\t\t{vacc}')
-		print(f'Final test data accuracy:\t\t{teacc}')
-
-		title = f'lambda{our_lambda}_batch_size{batch_size}_n-epochs{n_epochs}_n-s{n_s}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
-
-		plot_three_subplots(costs=(costs['train'], costs['val']),
-							losses=(losses['train'], losses['val']),
-							accuracies=(accuracies['train'], accuracies['val']),
-							title='fig3_' + title, show=True)
+		clf.check_gradients_similar(analytical_gradients, numerical_gradients)
 
 	print()
 
