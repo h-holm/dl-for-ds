@@ -172,7 +172,7 @@ class KLayerNetwork():
 		self.verbose = verbose
 
 		self.layers = self.__create_layers(layers)
-		self.k = len(self.layers) - 1
+		self.K = len(self.layers) - 1
 
 		self.__he_initialization()
 
@@ -216,7 +216,7 @@ class KLayerNetwork():
 
 			layer['mu_av'] = np.zeros((shape[0], 1))
 
-			layer['v_av'] = np.zeros((shape[0], 1))
+			layer['var_av'] = np.zeros((shape[0], 1))
 
 			activation = layer['activation']
 			activation_function = self.activation_functions[activation]
@@ -233,54 +233,57 @@ class KLayerNetwork():
 		""" Standard definition of the softmax function """
 		return np.maximum(s, 0)
 
-	def __evaluate_classifier(self, X):
+	def __evaluate_classifier(self, X, is_testing=False, is_training=False):
 		s = np.copy(X)
-		Hs = list()
-		# for layer in self.layers.values():
-		for layer in self.layers:
-			W, b = layer['W'], layer['b']
-			activation = layer['activation']
-			activation_function  = layer['activation_function']
-			# print()
-			# print('W.shape')
-			# print(W.shape)
-			# print(b.shape)
-			# print(s.shape)
-			if activation == 'relu':
-				# print()
-				# print('relu')
-				# print(W.shape)
-				# print(s.shape)
-				# print(b.shape)
-				# # # s = np.dot(W, s) + b
-				s = activation_function(np.dot(W, s) + b)
-				Hs.append(s)
-				# if self.verbose > 1:
-				# 	print()
-				# 	print(f'Shape of s:\t\t{s.shape}')
-				# 	print(f'Shape of H:\t\t{H.shape}')
-			else:
-				# print()
-				# print('softmax')
-				# print(W.shape)
-				# print(s.shape)
-				# print(b.shape)
-				# # # tmp = np.dot(W, s) + b
-				# print()
-				# print(f'Shape of tmp:\t{tmp.shape}')
-				P = activation_function(np.dot(W, s) + b)
-				# if self.verbose > 1:
-				# 	print()
-				# 	print(f'Shape of s:\t\t{s.shape}')
-				# 	print(f'Shape of P:\t\t{P.shape}')
-		#
-		# if self.verbose > 1:
-		# 	print()
-		# 	print(f'Length of Hs:\t\t{len(Hs)}')
-		# 	print(f'Shape of last H:\t{H.shape}')
-		# 	print(f'Shape of P:\t\t{P.shape}')
+		N = X.shape[1]
 
-		return Hs, P
+		if self.batch_norm:
+			# Use np.finfo(input_float_type).eps to get the machine epsilon of
+			# the input float type.
+			eps = np.finfo(np.float64).eps
+			# Implement equations 12 - 19 and store intermediary vectors.
+			H_list, s_list, mu_list, var_list, s_hat_list = list(), list(), list(), list(), list()
+			for i, layer in enumerate(self.layers):
+				W, b, gamma = layer['W'], layer['b'], layer['gamma']
+				beta, mu_av, var_av = layer['beta'], layer['mu_av'], layer['var_av']
+				activation_function = layer['activation_function']
+				H_list.append(s)
+				s = np.dot(W, s) + b
+				if i < self.K:
+					s_list.append(s)
+					if is_testing:
+						s = (s - mu_av) / np.sqrt(var_av + eps)
+					else:
+						mu = np.mean(s, axis=1, keepdims=True)
+						var = np.var(s, axis=1, keepdims=True) * np.float64((N - 1) / N)
+
+						if is_training:
+							layer['mu_av'] = self.alpha * mu_av + (1 - self.alpha) * mu
+							layer['var_av'] = self.alpha * var_av + (1 - self.alpha) * var
+
+						s = (s - mu) / np.sqrt(var + eps)
+
+						var_list.append(var)
+						mu_list.append(mu)
+
+					s_hat_list.append(s)
+					s = activation_function(np.multiply(gamma, s) + beta)
+				else:
+					P = activation_function(s)
+			return H_list, P, s_list, mu_list, var_list, s_hat_list
+		else:
+			H_list = list()
+			for layer in self.layers:
+				W, b = layer['W'], layer['b']
+				activation = layer['activation']
+				activation_function  = layer['activation_function']
+				if activation == 'relu':
+					s = activation_function(np.dot(W, s) + b)
+					H_list.append(s)
+				else:
+					P = activation_function(np.dot(W, s) + b)
+
+			return H_list, P
 
 	def __compute_loss_and_cost(self, X, Y, our_lambda):
 		""" Compute cost using the cross-entropy loss.
@@ -292,7 +295,7 @@ class KLayerNetwork():
 		_, p = self.__evaluate_classifier(X)
 
 		# If label is encoded as one-hot repr., then cross entropy is -log(yTp).
-		loss = (1 / N) * (-np.sum(Y * np.log(p)))
+		loss = np.float64(1 / N) * (-np.sum(Y * np.log(p)))
 
 		weights_squared = 0.0
 		for layer in self.layers:
@@ -325,42 +328,50 @@ class KLayerNetwork():
 
 	def compute_gradients(self, X_batch, Y_batch, our_lambda):
 		N = X_batch.shape[1]
-
 		gradients = dict()
-		gradients['W'] = [np.zeros(layer['W'].shape) for layer in self.layers]
-		gradients['b'] = [np.zeros(layer['b'].shape) for layer in self.layers]
+		for param in self.params:
+			gradients[param] = [np.zeros(layer[param].shape) for layer in self.layers]
 
-		# 1) evalutate the network (the forward pass)
-		H_batch, P_batch = self.__evaluate_classifier(X_batch)
+		if self.batch_norm:
+			# 1) evalutate the network (the forward pass)
+			H_batch, P_batch, s_batch, mu_batch, var_batch, s_hat_batch = \
+			self.__evaluate_classifier(X_batch, is_training=True)
 
-		# 2) compute the gradients (the backward pass). Page 49 in Lecture4.pdf
-		G_batch = -(Y_batch - P_batch)
+			# 2) compute the gradients (the backward pass). Page 49 in Lecture4.pdf
+			G_batch = -(Y_batch - P_batch)
 
-		# Backwards as per page 36 in Lecture4.pdf ("for l=k, k-1, ..., 2").
-		# tmp_layers = list(self.layers.values())
-		for l in range(len(self.layers) - 1, 0, -1):
-			gradients['W'][l] = (1 / N) * np.dot(G_batch, H_batch[l-1].T) + \
-			(2 * our_lambda * self.layers[l]['W'])
+			grads["W"][self.k] = 1/N * G_batch@H_batch[self.k].T + 2 * labda * self.W[self.k]
+		else:
+			# 1) evalutate the network (the forward pass)
+			H_batch, P_batch = self.__evaluate_classifier(X_batch)
 
-			gradients['b'][l] = np.reshape((1 / N) * \
-			np.dot(G_batch, np.ones(N)), (self.layers[l]['b'].shape[0], 1))
+			# 2) compute the gradients (the backward pass). Page 49 in Lecture4.pdf
+			G_batch = -(Y_batch - P_batch)
 
-			G_batch = np.dot(self.layers[l]['W'].T, G_batch)
-			H_batch[l-1] = np.maximum(H_batch[l-1], 0)
+			# Backwards as per page 36 in Lecture4.pdf ("for l=k, k-1, ..., 2").
+			for l in range(len(self.layers) - 1, 0, -1):
+				gradients['W'][l] = (1 / N) * np.dot(G_batch, H_batch[l-1].T) + \
+				(2 * our_lambda * self.layers[l]['W'])
 
-			# Indicator function on H_batch to yield only values larger than 0.
-			# COMMENT OUT IF TESTING GRADIENTS
-			G_batch = np.multiply(G_batch, H_batch[l-1] > 0)
+				gradients['b'][l] = np.reshape((1 / N) * \
+				np.dot(G_batch, np.ones(N)), (self.layers[l]['b'].shape[0], 1))
 
-		# And now for the first layer, which was left out of the loop.
-		gradients['W'][0] = (1 / N) * np.dot(G_batch, X_batch.T) + \
-		(our_lambda * self.layers[0]['W'])
-		gradients['b'][0] = np.reshape((1 / N) * \
-		np.dot(G_batch, np.ones(N)), self.layers[0]['b'].shape)
+				G_batch = np.dot(self.layers[l]['W'].T, G_batch)
+				H_batch[l-1] = np.maximum(H_batch[l-1], 0)
+
+				# Indicator function on H_batch to yield only values larger than 0.
+				# COMMENT OUT IF TESTING GRADIENTS
+				G_batch = np.multiply(G_batch, H_batch[l-1] > 0)
+
+			# And now for the first layer, which was left out of the loop.
+			gradients['W'][0] = (1 / N) * np.dot(G_batch, X_batch.T) + \
+			(our_lambda * self.layers[0]['W'])
+			gradients['b'][0] = np.reshape((1 / N) * \
+			np.dot(G_batch, np.ones(N)), self.layers[0]['b'].shape)
 
 		return gradients
 
-	def compute_gradients_num(self, X_batch, Y_batch, our_lambda=0.0, h=1e-7):
+	def compute_gradients_num(self, X_batch, Y_batch, our_lambda=np.float64(0), h=1e-7):
 		""" Compute gradients of the weight and bias numerically.
 			- X_batch is a d x N matrix.
 			- Y_batch is a K x N one-hot-encoding vector.
@@ -521,7 +532,9 @@ class KLayerNetwork():
 def main():
 	seed = 12345
 	np.random.seed(seed)
-	all = True
+
+	all = False
+
 	sanity_check = False # Deprecated
 
 	# These are for testing numerical vs analytical gradients. Remember to
@@ -530,7 +543,15 @@ def main():
 	exercise_1_3_layer = False
 	exercise_1_4_layer = False
 
-	exercise_2_2_layer = True
+	exercise_2_2_layer = False
+	exercise_2_3_layer = False
+	exercise_2_9_layer = False
+
+	# Exercise 3: Implement Batch Normalization
+	exercise_3_batch_norm = True
+
+	if exercise_2_3_layer or exercise_2_9_layer:
+		all = True
 
 	print()
 	print("------------------------ Loading dataset ------------------------")
@@ -686,10 +707,141 @@ def main():
 
 	if exercise_2_2_layer:
 		print()
-		print("-------------------------- Assignment 3 -------------------------")
+		print("---------------------- Exercise 2: 2-layer ----------------------")
+		layers = [(50, 'relu'), (10, 'softmax')]
+		alpha = 0.9
+		batch_norm = False
+
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=1)
+
+		our_lambda = 0.01
+		n_epochs = 48
+		batch_size = 100
+		eta_min = 1e-5
+		eta_max = 1e-1
+		n_s = 800
+
+		accuracies, costs, losses, _ = \
+		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+										datasets['train_set']['Y'],
+										our_lambda=our_lambda,
+										batch_size=batch_size,
+										eta_min=eta_min,
+										eta_max=eta_max,
+										n_s=n_s,
+										n_epochs=n_epochs)
+
+		tracc = round(accuracies["train"][-1], 4)
+		vacc = round(accuracies["val"][-1], 4)
+		teacc = round(accuracies["test"][-1], 4)
+
+		print()
+		print(f'Final training data accuracy:\t\t{tracc}')
+		print(f'Final validation data accuracy:\t\t{vacc}')
+		print(f'Final test data accuracy:\t\t{teacc}')
+
+		title = f'lambda{our_lambda}_batch_size{batch_size}_n-epochs{n_epochs}_n-s{n_s}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+
+		plot_three_subplots(costs=(costs['train'], costs['val']),
+							losses=(losses['train'], losses['val']),
+							accuracies=(accuracies['train'], accuracies['val']),
+							title='fig3_' + title, show=True)
+
+	if exercise_2_3_layer:
+		print()
+		print("---------------------- Exercise 2: 3-layer ----------------------")
 		layers = [(50, 'relu'), (50, 'relu'), (10, 'softmax')]
 		alpha = 0.9
 		batch_norm = False
+
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=1)
+
+		our_lambda = 0.005
+		n_epochs = 20
+		batch_size = 100
+		eta_min = 1e-5
+		eta_max = 1e-1
+		# n_s = 800
+		n_s = 5 * datasets['train_set']['X'].shape[1] / 100
+
+		accuracies, costs, losses, _ = \
+		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+										datasets['train_set']['Y'],
+										our_lambda=our_lambda,
+										batch_size=batch_size,
+										eta_min=eta_min,
+										eta_max=eta_max,
+										n_s=n_s,
+										n_epochs=n_epochs)
+
+		tracc = round(accuracies["train"][-1], 4)
+		vacc = round(accuracies["val"][-1], 4)
+		teacc = round(accuracies["test"][-1], 4)
+
+		print()
+		print(f'Final training data accuracy:\t\t{tracc}')
+		print(f'Final validation data accuracy:\t\t{vacc}')
+		print(f'Final test data accuracy:\t\t{teacc}')
+
+		title = f'lambda{our_lambda}_batch_size{batch_size}_n-epochs{n_epochs}_n-s{n_s}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+
+		plot_three_subplots(costs=(costs['train'], costs['val']),
+							losses=(losses['train'], losses['val']),
+							accuracies=(accuracies['train'], accuracies['val']),
+							title='fig3_' + title, show=True)
+
+	if exercise_2_9_layer:
+		print()
+		print("---------------------- Exercise 2: 9-layer ----------------------")
+		layers = [(50, 'relu'), (30, 'relu'), (20, 'relu'), (20, 'relu'),
+				  (10, 'relu'), (10, 'relu'), (10, 'relu'), (10, 'softmax')]
+		alpha = 0.9
+		batch_norm = False
+
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=1)
+
+		our_lambda = 0.005
+		n_epochs = 20
+		batch_size = 100
+		eta_min = 1e-5
+		eta_max = 1e-1
+		# n_s = 800
+		n_s = 5 * datasets['train_set']['X'].shape[1] / 100
+
+		accuracies, costs, losses, _ = \
+		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+										datasets['train_set']['Y'],
+										our_lambda=our_lambda,
+										batch_size=batch_size,
+										eta_min=eta_min,
+										eta_max=eta_max,
+										n_s=n_s,
+										n_epochs=n_epochs)
+
+		tracc = round(accuracies["train"][-1], 4)
+		vacc = round(accuracies["val"][-1], 4)
+		teacc = round(accuracies["test"][-1], 4)
+
+		print()
+		print(f'Final training data accuracy:\t\t{tracc}')
+		print(f'Final validation data accuracy:\t\t{vacc}')
+		print(f'Final test data accuracy:\t\t{teacc}')
+
+		title = f'lambda{our_lambda}_batch_size{batch_size}_n-epochs{n_epochs}_n-s{n_s}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+
+		plot_three_subplots(costs=(costs['train'], costs['val']),
+							losses=(losses['train'], losses['val']),
+							accuracies=(accuracies['train'], accuracies['val']),
+							title='fig3_' + title, show=True)
+
+	if exercise_3_batch_norm:
+		print()
+		print("---------------- Exercise 3: batch normalization -----------------")
+		# layers = [(50, 'relu'), (30, 'relu'), (20, 'relu'), (20, 'relu'),
+		# 		  (10, 'relu'), (10, 'relu'), (10, 'relu'), (10, 'softmax')]
+		layers = [(50, 'relu'), (50, 'relu'), (10, 'softmax')]
+		alpha = 0.9
+		batch_norm = True
 
 		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=1)
 
