@@ -496,12 +496,12 @@ class KLayerNetwork():
 
 			if self.verbose:
 				print()
-				print(f'Loss training:\t\t{round(losses["train"][n], 4)}')
-				print(f'Cost training:\t\t{round(costs["train"][n], 4)}')
-				print(f'Loss validation:\t{round(losses["val"][n], 4)}')
-				print(f'Cost validation:\t{round(costs["val"][n], 4)}')
-				print(f'Accuracy training:\t{round(accuracies["train"][n], 4)}')
-				print(f'Accuracy validation:\t{round(accuracies["val"][n], 4)}')
+				print(f'Loss training:\t\t{round(losses["train"][n], 4)}\t| Loss validation:\t{round(losses["val"][n], 4)}')
+				print(f'Cost training:\t\t{round(costs["train"][n], 4)}\t| Cost validation:\t{round(costs["val"][n], 4)}')
+				print(f'Accuracy training:\t{round(accuracies["train"][n], 4)}\t| Accuracy validation:\t{round(accuracies["val"][n], 4)}')
+				# print(f'Loss validation:\t{round(losses["val"][n], 4)}')
+				# print(f'Cost validation:\t{round(costs["val"][n], 4)}')
+				# print(f'Accuracy validation:\t{round(accuracies["val"][n], 4)}')
 				# print(f'Accuracy testing:\t{accuracies["test"][n]}')
 
 			# print(f'Current learning rate: {eta}')
@@ -521,7 +521,7 @@ class KLayerNetwork():
 def main():
 	seed = 12345
 	np.random.seed(seed)
-	all = False
+	all = True
 	sanity_check = False # Deprecated
 
 	# These are for testing numerical vs analytical gradients. Remember to
@@ -687,25 +687,19 @@ def main():
 	if exercise_2_2_layer:
 		print()
 		print("-------------------------- Assignment 3 -------------------------")
-		layers = [(50, 'relu'), (10, 'softmax')]
+		layers = [(50, 'relu'), (50, 'relu'), (10, 'softmax')]
 		alpha = 0.9
 		batch_norm = False
 
 		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=1)
 
-		our_lambda = 0.01
-		n_epochs = 48
+		our_lambda = 0.005
+		n_epochs = 20
 		batch_size = 100
 		eta_min = 1e-5
 		eta_max = 1e-1
-		n_s = 800
-
-		# n_s = 4 * int(np.floor(datasets['train_set']['X'].shape[1] / n_batch))
-		# print(n_s)
-
-		# Number of epochs set to equal four cycles.
-		# n_epochs = int(8 * (n_s / n_batch))
-		# print(n_epochs)
+		# n_s = 800
+		n_s = 5 * datasets['train_set']['X'].shape[1] / 100
 
 		accuracies, costs, losses, _ = \
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
