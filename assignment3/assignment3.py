@@ -204,6 +204,8 @@ class KLayerNetwork():
 
 			# Initialize as Gaussian random values with 0 mean and 1/sqrt(d) stdev.
 			layer['W'] = np.random.normal(0, 1 / np.sqrt(shape[1]), size=shape)
+			# layer['W'] = np.random.normal(0, 2 / np.sqrt(shape[1]), size=shape)
+			# layer['W'] = np.random.normal(0, 1e-1, size=shape)
 
 			# "Set biases equal to zero"
 			layer['b'] = np.zeros((shape[0], 1)) # ?
@@ -250,8 +252,8 @@ class KLayerNetwork():
 				# print(W.shape)
 				# print(s.shape)
 				# print(b.shape)
-				s = np.dot(W, s) + b
-				H = activation_function(s)
+				# # # s = np.dot(W, s) + b
+				s = activation_function(np.dot(W, s) + b)
 				Hs.append(s)
 				# if self.verbose > 1:
 				# 	print()
@@ -263,10 +265,10 @@ class KLayerNetwork():
 				# print(W.shape)
 				# print(s.shape)
 				# print(b.shape)
-				tmp = np.dot(W, s) + b
+				# # # tmp = np.dot(W, s) + b
 				# print()
 				# print(f'Shape of tmp:\t{tmp.shape}')
-				P = activation_function(tmp)
+				P = activation_function(np.dot(W, s) + b)
 				# if self.verbose > 1:
 				# 	print()
 				# 	print(f'Shape of s:\t\t{s.shape}')
@@ -348,7 +350,7 @@ class KLayerNetwork():
 
 			# Indicator function on H_batch to yield only values larger than 0.
 			# COMMENT OUT IF TESTING GRADIENTS
-			# G_batch = np.multiply(G_batch, H_batch[l-1] > 0)
+			G_batch = np.multiply(G_batch, H_batch[l-1] > 0)
 
 		# And now for the first layer, which was left out of the loop.
 		gradients['W'][0] = (1 / N) * np.dot(G_batch, X_batch.T) + \
@@ -462,20 +464,20 @@ class KLayerNetwork():
 				t = (t + 1) % (2 * n_s)
 
 				# if t == (n_s + 1) or t == (2 * n_s - 1):
-				if t == (2 * n_s - 1):
-					tr_acc = self.__compute_accuracy(self.data['train_set']['X'],
-													 self.data['train_set']['y'])
-					v_acc = self.__compute_accuracy(self.data['val_set']['X'],
-													self.data['val_set']['y'])
-					te_acc = self.__compute_accuracy(self.data['test_set']['X'],
-													 self.data['test_set']['y'])
-
-					settings = {'t': t, 'our_lambda': our_lambda, 'eta': eta,
-								'eta_min': eta_min, 'eta_max': eta_max,
-								'n_batch': n_batch, 'n_s': n_s, 'n_epochs': n_epochs,
-								'tr-acc': tr_acc, 'v-acc': v_acc, 'te-acc': te_acc}
-
-					list_settings.append(settings)
+				# if t == (2 * n_s - 1):
+					# tr_acc = self.__compute_accuracy(self.data['train_set']['X'],
+					# 								 self.data['train_set']['y'])
+					# v_acc = self.__compute_accuracy(self.data['val_set']['X'],
+					# 								self.data['val_set']['y'])
+					# te_acc = self.__compute_accuracy(self.data['test_set']['X'],
+					# 								 self.data['test_set']['y'])
+					#
+					# settings = {'t': t, 'our_lambda': our_lambda, 'eta': eta,
+					# 			'eta_min': eta_min, 'eta_max': eta_max,
+					# 			'n_batch': n_batch, 'n_s': n_s, 'n_epochs': n_epochs,
+					# 			'tr-acc': tr_acc, 'v-acc': v_acc, 'te-acc': te_acc}
+					#
+					# list_settings.append(settings)
 
 			losses['train'][n], costs['train'][n] = \
 			self.__compute_loss_and_cost(X, Y, our_lambda)
@@ -524,9 +526,9 @@ def main():
 
 	# These are for testing numerical vs analytical gradients. Remember to
 	# uncomment one of the rows in the analytical calculations.
-	exercise_1_2_layer = True
-	exercise_1_3_layer = True
-	exercise_1_4_layer = True
+	exercise_1_2_layer = False
+	exercise_1_3_layer = False
+	exercise_1_4_layer = False
 
 	exercise_2_2_layer = True
 
@@ -691,12 +693,19 @@ def main():
 
 		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=1)
 
-		our_lambda = 0.00
-		n_epochs = 10
+		our_lambda = 0.01
+		n_epochs = 48
 		batch_size = 100
 		eta_min = 1e-5
 		eta_max = 1e-1
-		n_s = 500
+		n_s = 800
+
+		# n_s = 4 * int(np.floor(datasets['train_set']['X'].shape[1] / n_batch))
+		# print(n_s)
+
+		# Number of epochs set to equal four cycles.
+		# n_epochs = int(8 * (n_s / n_batch))
+		# print(n_epochs)
 
 		accuracies, costs, losses, _ = \
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
@@ -722,7 +731,7 @@ def main():
 		plot_three_subplots(costs=(costs['train'], costs['val']),
 							losses=(losses['train'], losses['val']),
 							accuracies=(accuracies['train'], accuracies['val']),
-							title='fig3_' + title)
+							title='fig3_' + title, show=True)
 
 	print()
 
