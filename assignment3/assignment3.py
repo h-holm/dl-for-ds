@@ -259,7 +259,6 @@ class KLayerNetwork():
 				if i < len(self.layers) - 1:
 					s_list.append(s)
 					if is_testing:
-						print('is_testing in __evaluate_classifier')
 						s = (s - mu_av) / np.sqrt(var_av + eps)
 					else:
 						mu = np.mean(s, axis=1, keepdims=True)
@@ -1051,7 +1050,7 @@ def main():
 	if exercise_3_search_3_layer:
 		print()
 		print("------------------- Exercise 3: Lambda Search -------------------")
-		coarse = True
+		coarse = False
 		results_file = 'results/results_best.csv'
 		# If file not exists, create it with its headers.
 		if not os.path.exists(results_file):
@@ -1108,6 +1107,7 @@ def main():
 			top_5_mean = round(top_5_mean, 4)
 
 			print()
+			print(f'Lambda {our_lambda}')
 			print(f'Final training data accuracy:\t\t{tracc}')
 			print(f'Final validation data accuracy:\t\t{vacc}')
 			print(f'Final test data accuracy:\t\t{teacc}')
