@@ -611,20 +611,28 @@ def main():
 
 	sanity_check = False
 
-	# These are for testing numerical vs analytical gradients. Remember to
-	# uncomment one of the rows in the analytical calculations.
+	# Exercise 1: Implement Gradient Computations for K-Layer Network
+	# Checking gradients
 	exercise_1_2_layer = False
 	exercise_1_3_layer = False
 	exercise_1_4_layer = False
 
+	# Exercise 2: Train using K-Layer Network
+	# Training
 	exercise_2_2_layer = False
 	exercise_2_3_layer = False
 	exercise_2_9_layer = False
 
 	# Exercise 3: Implement Batch Normalization
+	# Checking gradients
 	exercise_3_check_2_layer = False
 	exercise_3_check_3_layer = False
-	exercise_3_train_3_layer = True
+
+	# Training
+	exercise_3_train_3_layer = False
+
+	# Lambda search
+	exercise_3_search_3_layer = True
 
 	if exercise_2_3_layer or exercise_2_9_layer or exercise_3_train_3_layer:
 		all = True
@@ -1028,13 +1036,106 @@ def main():
 		print(f'Final validation data accuracy:\t\t{vacc}')
 		print(f'Final test data accuracy:\t\t{teacc}')
 
-		title = f'lambda{our_lambda}_batch_size{batch_size}_n-epochs{n_epochs}_n-s{n_s}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+		if batch_norm:
+			bn = 'T'
+		else:
+			bn = 'F'
+
+		title = f'bn{bn}_lambda{our_lambda}_batch_size{batch_size}_n-epochs{n_epochs}_n-s{n_s}_alpha{alpha}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
 
 		plot_three_subplots(costs=(costs['train'], costs['val']),
 							losses=(losses['train'], losses['val']),
 							accuracies=(accuracies['train'], accuracies['val']),
 							title='ex3l3_' + title, show=True)
 
+	if exercise_3_search_3_layer:
+		print()
+		print("------------------- Exercise 3: Lambda Search -------------------")
+		coarse = True
+		results_file = 'results/results_best.csv'
+		# If file not exists, create it with its headers.
+		if not os.path.exists(results_file):
+			headers = ['top_5_vacc', 'tracc', 'vacc', 'teacc', 'lambda', 'alpha',
+					   'eta_min', 'eta_max', 'n_epochs', 'batch_size', 'n_s',
+					   'N', 'layers', 'seed']
+			with open(results_file, 'w+') as f:
+				writer = csv.writer(f, dialect='excel', delimiter=';')
+				writer.writerow(headers)
+
+		layers = [(50, 'relu'), (50, 'relu'), (10, 'softmax')]
+		alpha = 0.9
+		batch_norm = True
+
+		our_lambda = 0.005
+		n_epochs = 20
+		batch_size = 100
+		eta_min = 1e-5
+		eta_max = 1e-1
+		# n_s = 800
+		n_s = 5 * datasets['train_set']['X'].shape[1] / 100
+
+		if coarse:
+			# Coarse lambda search.
+			lambda_min = 1e-5
+			lambda_max = 1e-1
+			lambdas = np.linspace(lambda_min, lambda_max, 8)
+		else:
+			# Fine lambda search.
+			lambda_min = 1e-5
+			lambda_max = 0.0285785714285714 # Pasted in from coarse results.
+			lambdas = np.linspace(lambda_min, lambda_max, 8)
+
+		for our_lambda in lambdas:
+			our_lambda = round(our_lambda, 4)
+
+			clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=0)
+
+			accuracies, costs, losses, _ = \
+			clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+											datasets['train_set']['Y'],
+											our_lambda=our_lambda,
+											batch_size=batch_size,
+											eta_min=eta_min,
+											eta_max=eta_max,
+											n_s=n_s,
+											n_epochs=n_epochs)
+
+			tracc = round(accuracies["train"][-1], 4)
+			vacc = round(accuracies["val"][-1], 4)
+			teacc = round(accuracies["test"][-1], 4)
+
+			top_5_mean = np.sum(sorted(accuracies['val'][:], reverse=True)[:5]) / 5
+			top_5_mean = round(top_5_mean, 4)
+
+			print()
+			print(f'Final training data accuracy:\t\t{tracc}')
+			print(f'Final validation data accuracy:\t\t{vacc}')
+			print(f'Final test data accuracy:\t\t{teacc}')
+			print(f'Final top 5 mean:\t\t\t{top_5_mean}')
+
+			if batch_norm:
+				bn = 'T'
+			else:
+				bn = 'F'
+
+			N = datasets['train_set']['X'].shape[1]
+			title = f'bn{bn}_layers{len(layers)}_N{N}_lambda{our_lambda}_batch_size{batch_size}_n-epochs{n_epochs}_n-s{n_s}_alpha{alpha}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+
+			plot_three_subplots(costs=(costs['train'], costs['val']),
+								losses=(losses['train'], losses['val']),
+								accuracies=(accuracies['train'], accuracies['val']),
+								title='ex3search_' + title, show=False)
+
+			headers = ['top_5_vacc', 'tracc', 'vacc', 'teacc', 'lambda', 'alpha',
+					   'eta_min', 'eta_max', 'n_epochs', 'batch_size', 'n_s',
+					   'N', 'layers', 'seed']
+
+			results = [top_5_mean, tracc, vacc, teacc, our_lambda, alpha,
+					   eta_min, eta_max, n_epochs, batch_size, n_s,
+					   N, len(layers), seed]
+			with open(results_file, 'a') as f:
+				writer = csv.writer(f, dialect='excel', delimiter=';')
+				writer.writerow(results)
 	print()
 
 	return
