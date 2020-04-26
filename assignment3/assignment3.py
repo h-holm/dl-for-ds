@@ -370,6 +370,7 @@ class KLayerNetwork():
 
 			G_batch = np.dot(self.layers[-1]['W'].T, G_batch)
 			H_batch[-1] = np.maximum(H_batch[-1], 0)
+			# COMMENT OUT IF TESTING GRADIENTS
 			G_batch = np.multiply(G_batch, H_batch[-1] > 0)
 
 			# Backwards as per page 4 in Assignment3.pdf ("for l=k-1, k-2, ..., 1").
@@ -394,6 +395,7 @@ class KLayerNetwork():
 				if l > 0:
 					G_batch = np.dot(self.layers[l]['W'], G_batch)
 					H_batch[l] = np.maximum(H_batch[l], 0)
+					# COMMENT OUT IF TESTING GRADIENTS
 					G_batch = np.multiply(G_batch, H_batch[l] > 0)
 		else:
 			# 1) evalutate the network (the forward pass)
@@ -441,12 +443,16 @@ class KLayerNetwork():
 			for param in self.params:
 				gradients[param].append(np.zeros(layer[param].shape))
 				for j in np.ndindex(layer[param].shape):
-					old_par = layer[param][j]
-					layer[param][j] = old_par + h
+					old_values = layer[param][j]
+
+					layer[param][j] = old_values + h
 					_, cost1 = self.__compute_loss_and_cost(X_batch, Y_batch, our_lambda)
-					layer[param][j] = old_par - h
+
+					layer[param][j] = old_values - h
 					_, cost2 = self.__compute_loss_and_cost(X_batch, Y_batch, our_lambda)
-					layer[param][j] = old_par
+
+					layer[param][j] = old_values
+
 					gradients[param][i][j] = (cost1 - cost2) / (2 * h)
 
 		return gradients
@@ -454,20 +460,17 @@ class KLayerNetwork():
 	def check_gradients_similar(self, grads_ana, grads_num):
 		# np.allclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False)[source]
 		atols = [1e-7, 1e-6, 1e-5, 1e-4, 1e-3]
+		# rtols = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1]
 
 		for atol in atols:
 			results = list()
 			print()
+			print(f'--------------------------- Atol {atol} --------------------------')
 			for i in range(len(self.layers)):
+				print()
+				# print(f'\nLayer {i}')
 				for param in self.params:
-					if self.verbose:
-						print()
-						print('------------------------------------------------')
-						print()
-						print(f'layer[{i}][{param}]')
-						print(self.layers[i][param][:10, :10])
-						print(f'Actual shape is: {self.layers[i][param].shape}')
-						print()
+					if self.verbose and param == 'W':
 						print(f'grads_ana[{param}][{i}]')
 						print(grads_ana[param][i][:10, :10])
 						print(f'Actual shape is: {grads_ana[param][i].shape}')
@@ -477,7 +480,7 @@ class KLayerNetwork():
 						print(f'Actual shape is: {grads_num[param][i].shape}')
 					all_close = np.allclose(grads_ana[param][i], grads_num[param][i], atol=atol)
 					results.append(all_close)
-					print(f'{param}\tAll close for absolute tolerance {atol}: {all_close}')
+					print(f'{param}{i}\t\tAll close for absolute tolerance {atol}: {all_close}')
 
 			# Break prematurely if all are close.
 			if all(result for result in results):
@@ -600,9 +603,11 @@ def main():
 	exercise_2_9_layer = False
 
 	# Exercise 3: Implement Batch Normalization
-	exercise_3_2_layer = True
+	exercise_3_check_2_layer = False
+	exercise_3_check_3_layer = False
+	exercise_3_train_3_layer = True
 
-	if exercise_2_3_layer or exercise_2_9_layer:
+	if exercise_2_3_layer or exercise_2_9_layer or exercise_3_train_3_layer:
 		all = True
 
 	print()
@@ -886,9 +891,9 @@ def main():
 							accuracies=(accuracies['train'], accuracies['val']),
 							title='fig3_' + title, show=True)
 
-	if exercise_3_2_layer:
+	if exercise_3_check_2_layer:
 		print()
-		print("------------------ Exercise 3: 2-layer test --------------------")
+		print("------------------- Exercise 3: 2-layer test --------------------")
 		num_pixels = 10
 		num_images = 2
 
@@ -899,10 +904,11 @@ def main():
 		Y_batch = train_set['Y']
 
 		layers = [(50, 'relu'), (10, 'softmax')]
+		# layers = [(50, 'relu'), (50, 'relu'), (10, 'softmax')]
 		alpha = 0.9
 		batch_norm = True
 
-		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=0)
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=1)
 
 		our_lambda = 0.0
 		h = 1e-7
@@ -911,6 +917,49 @@ def main():
 		numerical_gradients = clf.compute_gradients_num(X_batch, Y_batch, our_lambda, h)
 
 		clf.check_gradients_similar(analytical_gradients, numerical_gradients)
+
+	if exercise_3_train_3_layer:
+		print()
+		print("---------------------- Exercise 2: 9-layer ----------------------")
+		layers = [(50, 'relu'), (50, 'relu'), (10, 'softmax')]
+		alpha = 0.9
+		batch_norm = True
+
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=1)
+
+		our_lambda = 0.005
+		n_epochs = 20
+		batch_size = 100
+		eta_min = 1e-5
+		eta_max = 1e-1
+		# n_s = 800
+		n_s = 5 * datasets['train_set']['X'].shape[1] / 100
+
+		accuracies, costs, losses, _ = \
+		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+										datasets['train_set']['Y'],
+										our_lambda=our_lambda,
+										batch_size=batch_size,
+										eta_min=eta_min,
+										eta_max=eta_max,
+										n_s=n_s,
+										n_epochs=n_epochs)
+
+		tracc = round(accuracies["train"][-1], 4)
+		vacc = round(accuracies["val"][-1], 4)
+		teacc = round(accuracies["test"][-1], 4)
+
+		print()
+		print(f'Final training data accuracy:\t\t{tracc}')
+		print(f'Final validation data accuracy:\t\t{vacc}')
+		print(f'Final test data accuracy:\t\t{teacc}')
+
+		title = f'lambda{our_lambda}_batch_size{batch_size}_n-epochs{n_epochs}_n-s{n_s}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+
+		plot_three_subplots(costs=(costs['train'], costs['val']),
+							losses=(losses['train'], losses['val']),
+							accuracies=(accuracies['train'], accuracies['val']),
+							title='fig3_' + title, show=True)
 
 	print()
 
