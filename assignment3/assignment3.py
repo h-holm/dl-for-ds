@@ -393,12 +393,14 @@ class KLayerNetwork():
 
 				# If l > 0, propagate G_batch to the next layer.
 				if l > 0:
-					G_batch = np.dot(self.layers[l]['W'], G_batch)
+					G_batch = np.dot(self.layers[l]['W'].T, G_batch)
 					H_batch[l] = np.maximum(H_batch[l], 0)
 					G_batch = np.multiply(G_batch, H_batch[l] > 0)
 		else:
 			# 1) evalutate the network (the forward pass)
-			H_batch, P_batch = self.__evaluate_classifier(X_batch)
+			# H_batch, P_batch = self.__evaluate_classifier(X_batch)
+			H_batch, P_batch, _, _, _, _ = \
+			self.__evaluate_classifier(X_batch, is_training=True)
 
 			# 2) compute the gradients (the backward pass). Page 49 in Lecture4.pdf
 			G_batch = -(Y_batch - P_batch)
@@ -585,7 +587,7 @@ class KLayerNetwork():
 				print()
 				print(f'Loss training:\t\t{round(losses["train"][n], 4)}\t| Loss validation:\t{round(losses["val"][n], 4)}')
 				print(f'Cost training:\t\t{round(costs["train"][n], 4)}\t| Cost validation:\t{round(costs["val"][n], 4)}')
-				print(f'Accuracy training:\t{round(accuracies["train"][n], 4)}\t| Accuracy validation:\t{round(accuracies["val"][n], 4)}')
+				print(f'Accuracy training:\t{round(accuracies["train"][n], 4)}\t| Accuracy validation:\t{round(accuracies["val"][n], 4)}\t| Accuracy testing:\t{round(accuracies["test"][n], 4)}')
 				# print(f'Accuracy testing:\t{accuracies["test"][n]}')
 
 			# print(f'Current learning rate: {eta}')
@@ -606,6 +608,7 @@ def main():
 	seed = 12345
 	np.random.seed(seed)
 
+	# Specifies whether to use "all" available data for training (5000 for val).
 	all = True
 
 	sanity_check = False
@@ -629,9 +632,11 @@ def main():
 
 	# Training
 	exercise_3_train_3_layer = False
+	exercise_3_train_3_layer_best_lambda = False
+	exercise_3_train_9_layer_best_lambda = True
 
 	# Lambda search
-	exercise_3_search_3_layer = True
+	exercise_3_search_3_layer = False
 
 	if exercise_2_3_layer or exercise_2_9_layer or exercise_3_train_3_layer:
 		all = True
@@ -1136,6 +1141,105 @@ def main():
 			with open(results_file, 'a') as f:
 				writer = csv.writer(f, dialect='excel', delimiter=';')
 				writer.writerow(results)
+
+	if exercise_3_train_3_layer_best_lambda:
+		print()
+		print("--------------- Exercise 3: 3-layer best lambda ---------------")
+		layers = [(50, 'relu'), (50, 'relu'), (10, 'softmax')]
+		alpha = 0.9
+		batch_norm = True
+
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=1)
+
+		our_lambda = 0.0041
+		n_epochs = 30 # Three cycles
+		batch_size = 100
+		eta_min = 1e-5
+		eta_max = 1e-1
+		# n_s = 800
+		n_s = 5 * datasets['train_set']['X'].shape[1] / 100
+
+		accuracies, costs, losses, _ = \
+		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+										datasets['train_set']['Y'],
+										our_lambda=our_lambda,
+										batch_size=batch_size,
+										eta_min=eta_min,
+										eta_max=eta_max,
+										n_s=n_s,
+										n_epochs=n_epochs)
+
+		tracc = round(accuracies["train"][-1], 4)
+		vacc = round(accuracies["val"][-1], 4)
+		teacc = round(accuracies["test"][-1], 4)
+
+		print()
+		print(f'Final training data accuracy:\t\t{tracc}')
+		print(f'Final validation data accuracy:\t\t{vacc}')
+		print(f'Final test data accuracy:\t\t{teacc}')
+
+		if batch_norm:
+			bn = 'T'
+		else:
+			bn = 'F'
+
+		title = f'bn{bn}_lambda{our_lambda}_batch_size{batch_size}_n-epochs{n_epochs}_n-s{n_s}_alpha{alpha}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+
+		plot_three_subplots(costs=(costs['train'], costs['val']),
+							losses=(losses['train'], losses['val']),
+							accuracies=(accuracies['train'], accuracies['val']),
+							title='ex3l3_' + title, show=True)
+
+	if exercise_3_train_9_layer_best_lambda:
+		print()
+		print("--------------- Exercise 3: 3-layer best lambda ---------------")
+		layers = [(50, 'relu'), (30, 'relu'), (20, 'relu'), (20, 'relu'),
+				  (10, 'relu'), (10, 'relu'), (10, 'relu'), (10, 'relu'),
+				  (10, 'softmax')]
+		alpha = 0.9
+		batch_norm = True
+
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=1)
+
+		our_lambda = 0.0041
+		n_epochs = 30 # Three cycles
+		batch_size = 100
+		eta_min = 1e-5
+		eta_max = 1e-1
+		# n_s = 800
+		n_s = 5 * datasets['train_set']['X'].shape[1] / 100
+
+		accuracies, costs, losses, _ = \
+		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+										datasets['train_set']['Y'],
+										our_lambda=our_lambda,
+										batch_size=batch_size,
+										eta_min=eta_min,
+										eta_max=eta_max,
+										n_s=n_s,
+										n_epochs=n_epochs)
+
+		tracc = round(accuracies["train"][-1], 4)
+		vacc = round(accuracies["val"][-1], 4)
+		teacc = round(accuracies["test"][-1], 4)
+
+		print()
+		print(f'Final training data accuracy:\t\t{tracc}')
+		print(f'Final validation data accuracy:\t\t{vacc}')
+		print(f'Final test data accuracy:\t\t{teacc}')
+
+		if batch_norm:
+			bn = 'T'
+		else:
+			bn = 'F'
+
+		title = f'bn{bn}_lambda{our_lambda}_batch_size{batch_size}_n-epochs{n_epochs}_n-s{n_s}_alpha{alpha}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+
+		plot_three_subplots(costs=(costs['train'], costs['val']),
+							losses=(losses['train'], losses['val']),
+							accuracies=(accuracies['train'], accuracies['val']),
+							title='ex3l9_' + title, show=True)
+
 	print()
 
 	return
