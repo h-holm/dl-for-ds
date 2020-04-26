@@ -175,6 +175,11 @@ class KLayerNetwork():
 
 		self.__he_initialization()
 
+	@staticmethod
+	def __shuffle_in_unison(a, b):
+		assert a.shape[1] == b.shape[1]
+		p = np.random.permutation(a.shape[1])
+		return a[:, p], b[:, p]
 
 	def __create_layers(self, input_layers):
 		output_layers = list()
@@ -254,6 +259,7 @@ class KLayerNetwork():
 				if i < len(self.layers) - 1:
 					s_list.append(s)
 					if is_testing:
+						print('is_testing in __evaluate_classifier')
 						s = (s - mu_av) / np.sqrt(var_av + eps)
 					else:
 						mu = np.mean(s, axis=1, keepdims=True)
@@ -296,10 +302,6 @@ class KLayerNetwork():
 			Returns the cost, which is a scalar. """
 		N = X.shape[1]
 
-		# if self.batch_norm:
-		# 	_, p, _, _, _, _ = self.__evaluate_classifier(X, is_testing)
-		# else:
-		# 	_, p = self.__evaluate_classifier(X)
 		_, p, _, _, _, _ = self.__evaluate_classifier(X, is_testing)
 
 		# If label is encoded as one-hot repr., then cross entropy is -log(yTp).
@@ -370,7 +372,6 @@ class KLayerNetwork():
 
 			G_batch = np.dot(self.layers[-1]['W'].T, G_batch)
 			H_batch[-1] = np.maximum(H_batch[-1], 0)
-			# COMMENT OUT IF TESTING GRADIENTS
 			G_batch = np.multiply(G_batch, H_batch[-1] > 0)
 
 			# Backwards as per page 4 in Assignment3.pdf ("for l=k-1, k-2, ..., 1").
@@ -395,7 +396,6 @@ class KLayerNetwork():
 				if l > 0:
 					G_batch = np.dot(self.layers[l]['W'], G_batch)
 					H_batch[l] = np.maximum(H_batch[l], 0)
-					# COMMENT OUT IF TESTING GRADIENTS
 					G_batch = np.multiply(G_batch, H_batch[l] > 0)
 		else:
 			# 1) evalutate the network (the forward pass)
@@ -443,7 +443,7 @@ class KLayerNetwork():
 			for param in self.params:
 				gradients[param].append(np.zeros(layer[param].shape))
 				for j in np.ndindex(layer[param].shape):
-					old_values = layer[param][j]
+					old_values = np.copy(layer[param][j])
 
 					layer[param][j] = old_values + h
 					_, cost1 = self.__compute_loss_and_cost(X_batch, Y_batch, our_lambda)
@@ -452,14 +452,25 @@ class KLayerNetwork():
 					_, cost2 = self.__compute_loss_and_cost(X_batch, Y_batch, our_lambda)
 
 					layer[param][j] = old_values
-
 					gradients[param][i][j] = (cost1 - cost2) / (2 * h)
+
+		# for i, layer in enumerate(self.layers):
+		# 	for param in self.params:
+		# 		gradients[param].append(np.zeros(layer[param].shape))
+		# 		param_try = np.copy(layer[param])
+		# 		for j in np.ndindex(layer[param].shape):
+		# 			layer[param] = param_try[:]
+		# 			layer[param][j] -= h
+		# 			_, cost1 = self.__compute_loss_and_cost(X_batch, Y_batch, our_lambda)
+		# 			layer[param][j] += (2 * h)
+		# 			_, cost2 = self.__compute_loss_and_cost(X_batch, Y_batch, our_lambda)
+		# 			gradients[param][i][j] = (cost2 - cost1) / (2 * h)
 
 		return gradients
 
-	def check_gradients_similar(self, grads_ana, grads_num):
+	def check_gradient_similarity(self, grads_ana, grads_num):
 		# np.allclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False)[source]
-		atols = [1e-7, 1e-6, 1e-5, 1e-4, 1e-3]
+		atols = [1e-08, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3]
 		# rtols = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1]
 
 		for atol in atols:
@@ -470,7 +481,7 @@ class KLayerNetwork():
 				print()
 				# print(f'\nLayer {i}')
 				for param in self.params:
-					if self.verbose and param == 'W':
+					if self.verbose:
 						print(f'grads_ana[{param}][{i}]')
 						print(grads_ana[param][i][:10, :10])
 						print(f'Actual shape is: {grads_ana[param][i].shape}')
@@ -480,7 +491,12 @@ class KLayerNetwork():
 						print(f'Actual shape is: {grads_num[param][i].shape}')
 					all_close = np.allclose(grads_ana[param][i], grads_num[param][i], atol=atol)
 					results.append(all_close)
-					print(f'{param}{i}\t\tAll close for absolute tolerance {atol}: {all_close}')
+
+					numerator = abs(grads_ana[param][i].flat[:] - grads_num[param][i].flat[:])
+					denominator = np.asarray([max(abs(a), abs(b)) + 1e-10 for a, b in zip(grads_ana[param][i].flat[:], grads_num[param][i].flat[:])])
+					max_relative_error = max(numerator / denominator)
+
+					print(f'{param}[{i}]    \tAll close: {all_close} \tRelative error: {max_relative_error}')
 
 			# Break prematurely if all are close.
 			if all(result for result in results):
@@ -488,7 +504,7 @@ class KLayerNetwork():
 
 		return
 
-	def mini_batch_gradient_descent(self, X, Y, our_lambda=0, batch_size=100, eta_min=1e-5, eta_max=1e-1, n_s=500, n_epochs=20):
+	def mini_batch_gradient_descent(self, X, Y, our_lambda=0, batch_size=100, eta_min=1e-5, eta_max=1e-1, n_s=500, n_epochs=20, shuffle=True):
 		""" Learn the model by performing mini-batch gradient descent
 			our_lambda 	- regularization term
 			batch_size 	- number of examples per mini-batch
@@ -513,6 +529,9 @@ class KLayerNetwork():
 		eta = eta_min
 		t = 0
 		for n in range(n_epochs):
+			if shuffle:
+				# Randomly shuffle our samples before each epoch.
+				X, Y = self.__shuffle_in_unison(X, Y)
 			for i in range(n_batch):
 				i_start = (i) * batch_size
 				i_end = (i + 1) * batch_size
@@ -588,9 +607,9 @@ def main():
 	seed = 12345
 	np.random.seed(seed)
 
-	all = False
+	all = True
 
-	sanity_check = False # Deprecated
+	sanity_check = False
 
 	# These are for testing numerical vs analytical gradients. Remember to
 	# uncomment one of the rows in the analytical calculations.
@@ -665,24 +684,52 @@ def main():
 	if sanity_check:
 		print()
 		print("------------------------ Sanity check ------------------------")
-		our_lambda = 0.01
-		n_epochs = 60
-		n_batch = 100
-		eta = 0.001
-		n_s = 500
-		decay_factor = 1.0
-		num_nodes = 50 # Number of nodes in the hidden layer
-		test_numerically = False
-		sanity_check = False
-		fig_3 = False
-		fig_4 = True
-		clf = KLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
 		# See if we can overfit, i.e. achieve a very small loss on the training
 		# data by training on the following 100 examples.
 		num_pixels = 3072
 		num_images = 100
 		train_set['X'] = train_set['X'][:num_pixels, :num_images]
 		train_set['Y'] = train_set['Y'][:num_pixels, :num_images]
+
+		layers = [(50, 'relu'), (50, 'relu'), (10, 'softmax')]
+		alpha = 0.9
+		batch_norm = True
+
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=1)
+
+		# our_lambda = 0.01
+		our_lambda = 0.005
+		n_epochs = 60
+		batch_size = 10
+		eta_min = 1e-5
+		eta_max = 1e-1
+		n_s = 800
+
+		accuracies, costs, losses, _ = \
+		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+										datasets['train_set']['Y'],
+										our_lambda=our_lambda,
+										batch_size=batch_size,
+										eta_min=eta_min,
+										eta_max=eta_max,
+										n_s=n_s,
+										n_epochs=n_epochs)
+
+		tracc = round(accuracies["train"][-1], 4)
+		vacc = round(accuracies["val"][-1], 4)
+		teacc = round(accuracies["test"][-1], 4)
+
+		print()
+		print(f'Final training data accuracy:\t\t{tracc}')
+		print(f'Final validation data accuracy:\t\t{vacc}')
+		print(f'Final test data accuracy:\t\t{teacc}')
+
+		title = f'lambda{our_lambda}_batch_size{batch_size}_n-epochs{n_epochs}_n-s{n_s}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+
+		plot_three_subplots(costs=(costs['train'], costs['val']),
+							losses=(losses['train'], losses['val']),
+							accuracies=(accuracies['train'], accuracies['val']),
+							title='sanity_' + title, show=True)
 
 	if exercise_1_2_layer:
 		print()
@@ -708,7 +755,7 @@ def main():
 		analytical_gradients = clf.compute_gradients(X_batch, Y_batch, our_lambda)
 		numerical_gradients = clf.compute_gradients_num(X_batch, Y_batch, our_lambda, h)
 
-		clf.check_gradients_similar(analytical_gradients, numerical_gradients)
+		clf.check_gradient_similarity(analytical_gradients, numerical_gradients)
 
 	if exercise_1_3_layer:
 		print()
@@ -734,7 +781,7 @@ def main():
 		analytical_gradients = clf.compute_gradients(X_batch, Y_batch, our_lambda)
 		numerical_gradients = clf.compute_gradients_num(X_batch, Y_batch, our_lambda, h)
 
-		clf.check_gradients_similar(analytical_gradients, numerical_gradients)
+		clf.check_gradient_similarity(analytical_gradients, numerical_gradients)
 
 	if exercise_1_4_layer:
 		print()
@@ -760,7 +807,7 @@ def main():
 		analytical_gradients = clf.compute_gradients(X_batch, Y_batch, our_lambda)
 		numerical_gradients = clf.compute_gradients_num(X_batch, Y_batch, our_lambda, h)
 
-		clf.check_gradients_similar(analytical_gradients, numerical_gradients)
+		clf.check_gradient_similarity(analytical_gradients, numerical_gradients)
 
 	if exercise_2_2_layer:
 		print()
@@ -802,7 +849,7 @@ def main():
 		plot_three_subplots(costs=(costs['train'], costs['val']),
 							losses=(losses['train'], losses['val']),
 							accuracies=(accuracies['train'], accuracies['val']),
-							title='fig3_' + title, show=True)
+							title='ex2l2_' + title, show=True)
 
 	if exercise_2_3_layer:
 		print()
@@ -845,7 +892,7 @@ def main():
 		plot_three_subplots(costs=(costs['train'], costs['val']),
 							losses=(losses['train'], losses['val']),
 							accuracies=(accuracies['train'], accuracies['val']),
-							title='fig3_' + title, show=True)
+							title='ex2l3_' + title, show=True)
 
 	if exercise_2_9_layer:
 		print()
@@ -889,7 +936,7 @@ def main():
 		plot_three_subplots(costs=(costs['train'], costs['val']),
 							losses=(losses['train'], losses['val']),
 							accuracies=(accuracies['train'], accuracies['val']),
-							title='fig3_' + title, show=True)
+							title='ex2l9_' + title, show=True)
 
 	if exercise_3_check_2_layer:
 		print()
@@ -904,11 +951,11 @@ def main():
 		Y_batch = train_set['Y']
 
 		layers = [(50, 'relu'), (10, 'softmax')]
-		# layers = [(50, 'relu'), (50, 'relu'), (10, 'softmax')]
+
 		alpha = 0.9
 		batch_norm = True
 
-		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=1)
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=0)
 
 		our_lambda = 0.0
 		h = 1e-7
@@ -916,11 +963,38 @@ def main():
 		analytical_gradients = clf.compute_gradients(X_batch, Y_batch, our_lambda)
 		numerical_gradients = clf.compute_gradients_num(X_batch, Y_batch, our_lambda, h)
 
-		clf.check_gradients_similar(analytical_gradients, numerical_gradients)
+		clf.check_gradient_similarity(analytical_gradients, numerical_gradients)
+
+	if exercise_3_check_3_layer:
+		print()
+		print("------------------- Exercise 3: 3-layer test --------------------")
+		num_pixels = 10
+		num_images = 2
+
+		train_set['X'] = train_set['X'][:num_pixels, :num_images]
+		train_set['Y'] = train_set['Y'][:num_pixels, :num_images]
+
+		X_batch = train_set['X']
+		Y_batch = train_set['Y']
+
+		layers = [(50, 'relu'), (50, 'relu'), (10, 'softmax')]
+
+		alpha = 0.9
+		batch_norm = True
+
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=0)
+
+		our_lambda = 0.0
+		h = 1e-7
+
+		analytical_gradients = clf.compute_gradients(X_batch, Y_batch, our_lambda)
+		numerical_gradients = clf.compute_gradients_num(X_batch, Y_batch, our_lambda, h)
+
+		clf.check_gradient_similarity(analytical_gradients, numerical_gradients)
 
 	if exercise_3_train_3_layer:
 		print()
-		print("---------------------- Exercise 2: 9-layer ----------------------")
+		print("---------------------- Exercise 3: 3-layer ----------------------")
 		layers = [(50, 'relu'), (50, 'relu'), (10, 'softmax')]
 		alpha = 0.9
 		batch_norm = True
@@ -959,7 +1033,7 @@ def main():
 		plot_three_subplots(costs=(costs['train'], costs['val']),
 							losses=(losses['train'], losses['val']),
 							accuracies=(accuracies['train'], accuracies['val']),
-							title='fig3_' + title, show=True)
+							title='ex3l3_' + title, show=True)
 
 	print()
 
