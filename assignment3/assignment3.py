@@ -209,7 +209,7 @@ class KLayerNetwork():
 			# Initialize as Gaussian random values with 0 mean and 1/sqrt(d) stdev.
 			layer['W'] = np.random.normal(0, 1 / np.sqrt(shape[1]), size=shape)
 			# layer['W'] = np.random.normal(0, 2 / np.sqrt(shape[1]), size=shape)
-			# layer['W'] = np.random.normal(0, 1e-1, size=shape)
+			# layer['W'] = np.random.normal(0, 1e-4, size=shape)
 
 			# "Set biases equal to zero"
 			layer['b'] = np.zeros((shape[0], 1)) # ?
@@ -633,7 +633,8 @@ def main():
 	# Training
 	exercise_3_train_3_layer = False
 	exercise_3_train_3_layer_best_lambda = False
-	exercise_3_train_9_layer_best_lambda = True
+	exercise_3_train_9_layer_best_lambda = False
+	exercise_3_train_3_layer_sensitivity = True
 
 	# Lambda search
 	exercise_3_search_3_layer = False
@@ -1239,6 +1240,54 @@ def main():
 							losses=(losses['train'], losses['val']),
 							accuracies=(accuracies['train'], accuracies['val']),
 							title='ex3l9_' + title, show=True)
+
+	if exercise_3_train_3_layer_sensitivity:
+		print()
+		print("--------------- Exercise 3: 3-layer best lambda ---------------")
+		layers = [(50, 'relu'), (50, 'relu'), (10, 'softmax')]
+		alpha = 0.9
+		batch_norm = False
+
+		clf = KLayerNetwork(labels, datasets, layers, alpha, batch_norm, verbose=1)
+
+		our_lambda = 0.005
+		n_epochs = 20 # Two cycles of training.
+		batch_size = 100
+		eta_min = 1e-5
+		eta_max = 1e-1
+		# n_s = 800
+		n_s = 5 * datasets['train_set']['X'].shape[1] / 100
+
+		accuracies, costs, losses, _ = \
+		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
+										datasets['train_set']['Y'],
+										our_lambda=our_lambda,
+										batch_size=batch_size,
+										eta_min=eta_min,
+										eta_max=eta_max,
+										n_s=n_s,
+										n_epochs=n_epochs)
+
+		tracc = round(accuracies["train"][-1], 4)
+		vacc = round(accuracies["val"][-1], 4)
+		teacc = round(accuracies["test"][-1], 4)
+
+		print()
+		print(f'Final training data accuracy:\t\t{tracc}')
+		print(f'Final validation data accuracy:\t\t{vacc}')
+		print(f'Final test data accuracy:\t\t{teacc}')
+
+		if batch_norm:
+			bn = 'T'
+		else:
+			bn = 'F'
+
+		title = f'bn{bn}_lambda{our_lambda}_batch_size{batch_size}_n-epochs{n_epochs}_n-s{n_s}_alpha{alpha}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+
+		plot_three_subplots(costs=(costs['train'], costs['val']),
+							losses=(losses['train'], losses['val']),
+							accuracies=(accuracies['train'], accuracies['val']),
+							title='sigma1e-4_' + title, show=True)
 
 	print()
 
