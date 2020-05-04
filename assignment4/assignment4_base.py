@@ -44,6 +44,25 @@ def prepare_data(filepath):
 	return output
 
 
+def plot_lines(values, label, xlabel, ylabel, title, show=False):
+   """ Plots curve """
+   fig, ax = plt.subplots(figsize=(10, 8))
+   fig.suptitle(title)
+
+   ax.plot(range(len(values)), values, label=label)
+   ax.legend()
+
+   ax.set(xlabel=xlabel, ylabel=ylabel)
+   ax.grid()
+
+   plt.savefig(f'plots/{title}.png', bbox_inches='tight')
+
+   if show:
+	   plt.show()
+
+   return plt
+
+
 class RecurrentNeuralNetwork():
 	""" K-layer network classifier based on mini-batch gradient descent """
 
@@ -188,11 +207,14 @@ class RecurrentNeuralNetwork():
 		""" AdaGrad algorithm as per page 2 in Assignment4.pdf """
 		# e: position tracker; n: update step
 		e, n, epoch = 0, 0, 0
+		# smooth_losses = list()
 		h_prev = np.zeros((self.m, 1))
 
 		m_params = dict()
 		for param_name, param_matrix in self.params.items():
 			m_params[param_name] = np.zeros(param_matrix.shape)
+
+		# smooth_loss = 109.9230586091536
 
 		print()
 		while epoch < n_epochs:
@@ -204,6 +226,7 @@ class RecurrentNeuralNetwork():
 			if n == 0 and epoch == 0:
 				smooth_loss = loss
 			smooth_loss = (0.999 * smooth_loss) + (0.001 * loss)
+			# smooth_losses.append(smooth_loss)
 
 			if n % 100 == 0:
 				print(f'Smooth loss after {n} iterations:  \t{smooth_loss}')
@@ -227,7 +250,7 @@ class RecurrentNeuralNetwork():
 				h_prev = np.zeros((self.m, 1))
 				epoch += 1
 
-		return
+		return smooth_losses
 
 
 def main():
@@ -235,7 +258,9 @@ def main():
 	np.random.seed(seed)
 
 	gradients = False
-	exercise_1 = True
+	part_2 = False
+	part_3 = False
+	part_4 = True
 
 	print("\n------------------------ Loading dataset ------------------------")
 	datasets_folder = '/Users/henrikholm/Github/dl-for-ds/assignment4/input/goblet_book.txt'
@@ -251,7 +276,7 @@ def main():
 		eta = 0.1
 		seq_length = 25
 		sigma = 0.01
-		num_comps = 20
+		num_comps = 25
 
 		RNN = RecurrentNeuralNetwork(input_data, m, eta, sigma)
 
@@ -261,7 +286,24 @@ def main():
 
 		RNN.run_gradient_check(inputs, labels, h_prev, num_comps=num_comps)
 
-	if exercise_1:
+	if part_2:
+		print()
+		print("------------------------ Smooth loss plot -----------------------")
+		m = 100
+		eta = 0.1
+		seq_length = 25
+		sigma = 0.01
+		RNN = RecurrentNeuralNetwork(input_data, m, eta, sigma)
+
+		n_epochs = 3
+		smooth_losses = RNN.adagrad(seq_length, n_epochs)
+
+		title = f'm{m}_eta{eta}_sl{seq_length}_sigma{sigma}_nepochs{n_epochs}'
+		plot_lines(values=smooth_losses, label='Smooth loss function',
+				   xlabel='Iteration', ylabel='Smooth loss',
+				   title=title, show=True)
+
+	if part_3:
 		print()
 		print("-------------------------- Exercise 1 --------------------------")
 		m = 100
@@ -270,7 +312,19 @@ def main():
 		sigma = 0.01
 		RNN = RecurrentNeuralNetwork(input_data, m, eta, sigma)
 
-		n_epochs = 10
+		n_epochs = 30
+		RNN.adagrad(seq_length, n_epochs)
+
+	if part_4:
+		print()
+		print("-------------------------- Exercise 1 --------------------------")
+		m = 100
+		eta = 0.1
+		seq_length = 25
+		sigma = 0.01
+		RNN = RecurrentNeuralNetwork(input_data, m, eta, sigma)
+
+		n_epochs = 30
 		RNN.adagrad(seq_length, n_epochs)
 
 	print()
