@@ -9,7 +9,7 @@ import os
 import json
 import re
 import emoji
-import matplotlib.pyplot as plt
+import pickle
 import numpy as np
 
 
@@ -27,13 +27,16 @@ def read_input_files(list_of_filepaths):
 		with open(filepath, 'r') as f:
 			tweets = json.load(f)
 			for tweet in tweets:
-				contents += ' ' + tweet['text']
+				# Here, ¶ is used as stop character at the end of each tweet.
+				contents += tweet['text'] + '¶ '
 
 	# Remove non-latin characters such as Chinese characters.
 	contents = re.sub(r'[^\u0020-\u024F]', '', contents)
 
 	# Remove links.
 	contents = re.sub(r'https?://\S+', '', contents)
+
+	# Remove emojis.
 	contents = remove_emoji(contents)
 
 	output['contents'] = contents
@@ -55,25 +58,6 @@ def read_input_files(list_of_filepaths):
 	output['char_to_idx'] = char_to_idx
 
 	return output
-
-
-def plot_lines(values, label, xlabel, ylabel, title, show=False):
-   """ Plots curve """
-   fig, ax = plt.subplots(figsize=(10, 8))
-   fig.suptitle(title)
-
-   ax.plot(range(len(values)), values, label=label)
-   ax.legend()
-
-   ax.set(xlabel=xlabel, ylabel=ylabel)
-   ax.grid()
-
-   plt.savefig(f'plots/{title}.png', bbox_inches='tight')
-
-   if show:
-	   plt.show()
-
-   return plt
 
 
 class RecurrentNeuralNetwork():
@@ -227,8 +211,6 @@ class RecurrentNeuralNetwork():
 		for param_name, param_matrix in self.params.items():
 			m_params[param_name] = np.zeros(param_matrix.shape)
 
-		smooth_loss = 109.9230586091536
-
 		print()
 		while epoch < n_epochs:
 			X = [self.data['char_to_idx'][char] for char in self.data['contents'][e: e+seq_length]]
@@ -236,23 +218,16 @@ class RecurrentNeuralNetwork():
 
 			gradients, loss, h_prev = self.__compute_gradients(X, Y, h_prev)
 
-			# if n == 0 and epoch == 0:
-			# 	smooth_loss = loss
+			if n == 0 and epoch == 0:
+				smooth_loss = loss
 			smooth_loss = (0.999 * smooth_loss) + (0.001 * loss)
 			# smooth_losses.append(smooth_loss)
 
-			# if n % 100 == 0:
-			# 	print(f'Smooth loss after {n} iterations:  \t{smooth_loss}')
-			#
-			# if n % 500 == 0:
-			# 	text = self.synthesize_text(h_prev, X, text_length=200)
-			# 	print(f'\nSynthesized text after {n} iterations:\n{text}\n')
-			if n % 1000 == 0:
+			if n % 100 == 0:
 				print(f'Smooth loss after {n} iterations:  \t{smooth_loss}')
-				if smooth_loss > 40:
-					text = self.synthesize_text(h_prev, X, text_length=200)
-				else:
-					text = self.synthesize_text(h_prev, X, text_length=1000)
+
+			if n % 500 == 0:
+				text = self.synthesize_text(h_prev, X, text_length=140)
 				print(f'\nSynthesized text after {n} iterations:\n{text}\n')
 
 			# AdaGrad update step
@@ -277,87 +252,38 @@ def main():
 	seed = 12345
 	np.random.seed(seed)
 
-	input_files = list()
-	years_with_data = ['2009', '2010', '2011', '2012', '2013', '2014', '2015',
-					   '2016', '2017', '2018']
-	file_prefix = '/Users/henrikholm/Github/dl-for-ds/assignment4/input/condensed_'
-	file_suffix = '.json'
-	for year in years_with_data:
-		input_files.append(file_prefix + year + file_suffix)
-
-	input_data = read_input_files(input_files)
-	print(input_data)
-	quit()
-
-	gradients = False
-	part_2 = False
-	part_3 = False
-	part_4 = True
-
 	print("\n------------------------ Loading dataset ------------------------")
-	datasets_folder = '/Users/henrikholm/Github/dl-for-ds/assignment4/input/goblet_book.txt'
-	input_data = prepare_data(datasets_folder)
 
-	print("\n-------------------- Instantiating classifier -------------------")
+	pickle_file = 'trump_tweets.pkl'
+	if os.path.isfile(pickle_file):
+		with open(pickle_file, 'rb') as pickle_in:
+			input_data = pickle.load(pickle_in)
+	else:
+		input_files = list()
+		years_with_data = ['2009', '2010', '2011', '2012', '2013', '2014', '2015',
+						   '2016', '2017', '2018']
+		file_prefix = '/Users/henrikholm/Github/dl-for-ds/assignment4/input/condensed_'
+		file_suffix = '.json'
+		for year in years_with_data:
+			input_files.append(file_prefix + year + file_suffix)
+
+		input_data = read_input_files(input_files)
+
+		with open(pickle_file, 'wb') as pickle_out:
+			pickle.dump(input_data, pickle_out)
+
+	print(input_data)
 
 	print("\n---------------------- Learning classifier ----------------------")
-	if gradients:
-		print()
-		print("--------------------------- Gradients ---------------------------")
-		m = 100
-		eta = 0.1
-		seq_length = 25
-		sigma = 0.01
-		num_comps = 25
 
-		RNN = RecurrentNeuralNetwork(input_data, m, eta, sigma)
+	m = 100
+	eta = 0.1
+	seq_length = 25
+	sigma = 0.01
+	RNN = RecurrentNeuralNetwork(input_data, m, eta, sigma)
 
-		h_prev = np.zeros((RNN.m, 1))
-		inputs = [RNN.data['char_to_idx'][char] for char in RNN.data['contents'][: seq_length]]
-		labels = [RNN.data['char_to_idx'][char] for char in RNN.data['contents'][1: seq_length + 1]]
-
-		RNN.run_gradient_check(inputs, labels, h_prev, num_comps=num_comps)
-
-	if part_2:
-		print()
-		print("------------------------ Smooth loss plot -----------------------")
-		m = 100
-		eta = 0.1
-		seq_length = 25
-		sigma = 0.01
-		RNN = RecurrentNeuralNetwork(input_data, m, eta, sigma)
-
-		n_epochs = 3
-		smooth_losses = RNN.adagrad(seq_length, n_epochs)
-
-		title = f'm{m}_eta{eta}_sl{seq_length}_sigma{sigma}_nepochs{n_epochs}'
-		plot_lines(values=smooth_losses, label='Smooth loss function',
-				   xlabel='Iteration', ylabel='Smooth loss',
-				   title=title, show=True)
-
-	if part_3:
-		print()
-		print("-------------------------- Exercise 1 --------------------------")
-		m = 100
-		eta = 0.1
-		seq_length = 25
-		sigma = 0.01
-		RNN = RecurrentNeuralNetwork(input_data, m, eta, sigma)
-
-		n_epochs = 30
-		RNN.adagrad(seq_length, n_epochs)
-
-	if part_4:
-		print()
-		print("-------------------------- Exercise 1 --------------------------")
-		m = 100
-		eta = 0.1
-		seq_length = 25
-		sigma = 0.01
-		RNN = RecurrentNeuralNetwork(input_data, m, eta, sigma)
-
-		n_epochs = 30
-		RNN.adagrad(seq_length, n_epochs)
+	n_epochs = 30
+	RNN.adagrad(seq_length, n_epochs)
 
 	print()
 
