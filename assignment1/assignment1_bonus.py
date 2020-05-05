@@ -149,7 +149,7 @@ class SingleLayerNetwork():
 		return np.exp(s - np.max(s, axis=0)) / np.exp(s - np.max(s, axis=0)).sum(axis=0)
 
 	def compute_cost(self, X, Y, our_lambda):
-		""" Compute cost using the cross-entropy loss.
+		""" Compute cost using the cross-entropy or SVM multi-class loss.
 			- each column of X corresponds to an image and X has size d x N.
 			- Y corresponds to the one-hot ground truth label matrix.
 			- our_lambda is the regularization term ("lambda" is reserved).
