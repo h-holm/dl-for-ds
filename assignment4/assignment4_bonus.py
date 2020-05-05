@@ -22,23 +22,28 @@ def read_input_files(list_of_filepaths):
 
 	output = dict()
 	contents = ''
+	all_tweets = list()
 
 	for filepath in list_of_filepaths:
 		with open(filepath, 'r') as f:
 			tweets = json.load(f)
 			for tweet in tweets:
-				# Here, ¶ is used as stop character at the end of each tweet.
-				contents += tweet['text'] + '¶ '
+				# Remove non-latin characters such as Chinese characters.
+				tweet = re.sub(r'[^\u0020-\u024F]', '', tweet['text'])
+				# Remove links.
+				tweet = re.sub(r'https?://\S+', '', tweet)
+				# Remove emojis.
+				tweet = remove_emoji(tweet)
 
-	# Remove non-latin characters such as Chinese characters.
-	contents = re.sub(r'[^\u0020-\u024F]', '', contents)
+				if len(tweet) < 4:
+					continue
 
-	# Remove links.
-	contents = re.sub(r'https?://\S+', '', contents)
+				all_tweets.append(tweet)
 
-	# Remove emojis.
-	contents = remove_emoji(contents)
+				# Here, ¶ is used a stop character at the end of each tweet.
+				contents += tweet + '¶ '
 
+	output['all_tweets'] = all_tweets
 	output['contents'] = contents
 	output['contents_length'] = len(contents)
 
@@ -213,37 +218,34 @@ class RecurrentNeuralNetwork():
 
 		print()
 		while epoch < n_epochs:
-			X = [self.data['char_to_idx'][char] for char in self.data['contents'][e: e+seq_length]]
-			Y = [self.data['char_to_idx'][char] for char in self.data['contents'][e+1: e+seq_length+1]]
-
-			gradients, loss, h_prev = self.__compute_gradients(X, Y, h_prev)
-
-			if n == 0 and epoch == 0:
-				smooth_loss = loss
-			smooth_loss = (0.999 * smooth_loss) + (0.001 * loss)
-			# smooth_losses.append(smooth_loss)
-
-			if n % 100 == 0:
-				print(f'Smooth loss after {n} iterations:  \t{smooth_loss}')
-
-			if n % 500 == 0:
-				text = self.synthesize_text(h_prev, X, text_length=140)
-				print(f'\nSynthesized text after {n} iterations:\n{text}\n')
-
-			# AdaGrad update step
-			for param_name, param_matrix in self.params.items():
-				m_params[param_name] += gradients[param_name] * gradients[param_name]
-				param_matrix -= self.eta / np.sqrt(m_params[param_name] + \
-								np.finfo(np.float64).eps) * gradients[param_name]
-
-			e += seq_length
-			n += 1
-
-			if e >= (self.data['contents_length'] - seq_length - 1):
-				print(f'\nEpoch {epoch} finished\n')
-				e = 0
+			for tweet in self.data['all_tweets']:
 				h_prev = np.zeros((self.m, 1))
-				epoch += 1
+				X = [self.data['char_to_idx'][char] for char in tweet]
+				Y = [self.data['char_to_idx'][char] for char in tweet[1:] + ' ']
+
+				gradients, loss, h_prev = self.__compute_gradients(X, Y, h_prev)
+
+				if n == 0 and epoch == 0:
+					smooth_loss = loss
+				smooth_loss = (0.999 * smooth_loss) + (0.001 * loss)
+
+				if n % 100 == 0:
+					print(f'Smooth loss after {n} tweets:  \t{smooth_loss}')
+
+				if n % 500 == 0:
+					text = self.synthesize_text(h_prev, X, text_length=140)
+					print(f'\nSynthesized text after {n} tweets:\n{text}\n')
+
+				# AdaGrad update step
+				for param_name, param_matrix in self.params.items():
+					m_params[param_name] += gradients[param_name] * gradients[param_name]
+					param_matrix -= self.eta / np.sqrt(m_params[param_name] + \
+									np.finfo(np.float64).eps) * gradients[param_name]
+
+				n += 1
+
+			print(f'\nEpoch {epoch} finished\n')
+			epoch += 1
 
 		return smooth_losses
 
@@ -271,8 +273,6 @@ def main():
 
 		with open(pickle_file, 'wb') as pickle_out:
 			pickle.dump(input_data, pickle_out)
-
-	print(input_data)
 
 	print("\n---------------------- Learning classifier ----------------------")
 
