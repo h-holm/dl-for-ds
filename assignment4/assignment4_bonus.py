@@ -121,7 +121,7 @@ class RecurrentNeuralNetwork():
 
 	def __compute_gradients(self, inputs, labels, h_prev):
 		""" Computes gradients of the weights and biases analytically """
-		loss, a_arrays, x_arrays, h_arrays, o_arrays, p_arrays = \
+		loss, a_arrays, x_arrays, h_arrays, _, p_arrays = \
 			self.__forward_pass(inputs, labels, h_prev)
 
 		gradients = dict()
@@ -196,7 +196,7 @@ class RecurrentNeuralNetwork():
 		x_next = np.zeros((self.K, 1))
 		x_next[idx] = 1
 		text = ''
-		for t in range(text_length):
+		for _ in range(text_length):
 			_, h, _, p = self.__evaluate_classifier(h, x_next)
 			idx = np.random.choice(range(self.K), p=p.flat)
 			x_next = np.zeros((self.K, 1))
@@ -208,7 +208,7 @@ class RecurrentNeuralNetwork():
 	def adagrad(self, seq_length, n_epochs):
 		""" AdaGrad algorithm as per page 2 in Assignment4.pdf """
 		# e: position tracker; n: update step
-		e, n, epoch = 0, 0, 0
+		n, epoch = 0, 0
 		smooth_losses = list()
 		h_prev = np.zeros((self.m, 1))
 

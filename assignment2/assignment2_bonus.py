@@ -423,7 +423,7 @@ def main():
 
 	print()
 	print("---------------------- Normalizing dataset ----------------------")
-	for dataset_name, dataset in datasets.items():
+	for dataset in datasets.values():
 		dataset['X'] = normalize_dataset(dataset['X'], verbose=1)
 
 	print()

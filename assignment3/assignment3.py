@@ -76,7 +76,7 @@ def unpickle(filename):
 
 def montage(W, title, labels):
 	""" Display the image for each label in W """
-	fig, ax = plt.subplots(2, 5)
+	_, ax = plt.subplots(2, 5)
 	for i in range(2):
 		for j in range(5):
 			im  = W[((i * 5) + j), :].reshape(32,32,3, order='F')
@@ -96,7 +96,7 @@ def plot_lines(line_A, line_B, label_A, label_B, xlabel, ylabel, title, show=Fal
    """ Plots performance curves """
    assert(line_A.shape == line_B.shape)
 
-   fig, ax = plt.subplots(figsize=(10, 8))
+   _, ax = plt.subplots(figsize=(10, 8))
    ax.plot(range(len(line_A)), line_A, label=label_A)
    ax.plot(range(len(line_B)), line_B, label=label_B)
    ax.legend()
@@ -685,7 +685,7 @@ def main():
 
 	print()
 	print("---------------------- Normalizing dataset ----------------------")
-	for dataset_name, dataset in datasets.items():
+	for dataset in datasets.values():
 		dataset['X'] = normalize_dataset(dataset['X'], verbose=1)
 
 	print()
