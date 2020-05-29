@@ -9,6 +9,7 @@ import os
 import csv
 import pickle
 import matplotlib.pyplot as plt
+from scipy.ndimage.interpolation import rotate, shift, zoom
 import numpy as np
 
 
@@ -109,6 +110,48 @@ def plot_three_subplots(costs, losses, accuracies, title, show=False):
 		plt.show()
 
 	return
+
+
+def random_jitter(img):
+	img = img.reshape(32, 32, 3, order='F')
+	img = rotate(img, angle=-90, reshape=False)
+	gaussian = np.random.normal(0, 0.1, img.shape)
+
+	# Randomly remove a column and/or a row.
+	# if np.random.random() > 0.7:
+	# 	img[np.random.randint(0, 32, 1), :] = 0
+	# if np.random.random() > 0.7:
+	# 	img[:, np.random.randint(0, 32, 1), :] = 0
+
+	# Flip horizontally.
+	if np.random.random() > 0.7:
+		# img = img[::-1]
+		img = np.fliplr(img)
+
+	# Apply gaussian noise.
+	if np.random.random() > 0.7:
+		img += gaussian
+
+	# Randomly shift colors.
+	if np.random.random() > 0.7:
+		img = shift(img, shift=(np.random.randint(-1, 1, 3) / 255), mode='nearest')
+
+	if np.random.random() > 0.7:
+		# img = rotate(img, angle=np.random.randint(-5, 6, 1)[0], reshape=False)
+		img = rotate(img, angle=np.random.randint(-10, 11, 1)[0], reshape=False, mode='nearest')
+		# img = rotate(img, angle=np.random.randint(-5, 6, 1)[0], reshape=False, mode='reflect')
+		# img = rotate(img, angle=np.random.randint(-5, 6, 1)[0], reshape=False, mode='wrap')
+
+	img = rotate(img, angle=90, reshape=False)
+	# img = img.flatten()
+	img = img.reshape(3072, order='F')
+	return img
+
+
+def random_jitter_to_batch(batch):
+	for i in range(batch.shape[1]):
+		batch[:, i] = random_jitter(batch[:, i])
+	return batch
 
 
 class TwoLayerNetwork():
@@ -276,7 +319,6 @@ class TwoLayerNetwork():
 
 		if self.verbose:
 			print()
-
 			print(f'Accuracy training:\t{round(self.__compute_accuracy(self.data["train_set"]["X"], self.data["train_set"]["y"]), 4)}')
 			print(f'Accuracy validation:\t{round(self.__compute_accuracy(self.data["val_set"]["X"], self.data["val_set"]["y"]), 4)}')
 			print(f'Accuracy testing:\t{round(self.__compute_accuracy(self.data["test_set"]["X"], self.data["test_set"]["y"]), 4)}')
@@ -296,6 +338,8 @@ class TwoLayerNetwork():
 
 				X_batch = X[:, i_start:i_end]
 				Y_batch = Y[:, i_start:i_end]
+
+				X_batch = random_jitter_to_batch(X_batch)
 
 				grad_W1, grad_b1, grad_W2, grad_b2 = \
 				self.compute_gradients(X_batch, Y_batch, our_lambda)
@@ -343,17 +387,15 @@ class TwoLayerNetwork():
 			accuracies['test'][n] = self.__compute_accuracy(self.data['test_set']['X'],
 															self.data['test_set']['y'])
 
-			if self.verbose:
-				print()
-				print(f'Loss training:\t\t{round(losses["train"][n], 4)}')
-				print(f'Cost training:\t\t{round(costs["train"][n], 4)}')
-				print(f'Loss validation:\t{round(losses["val"][n], 4)}')
-				print(f'Cost validation:\t{round(costs["val"][n], 4)}')
-				print(f'Accuracy training:\t{round(accuracies["train"][n], 4)}')
-				print(f'Accuracy validation:\t{round(accuracies["val"][n], 4)}')
-				# print(f'Accuracy testing:\t{accuracies["test"][n]}')
-
-			# print(f'Current learning rate: {eta}')
+			# if self.verbose:
+			print()
+			print(f'Epoch: {n + 1} / {n_epochs}')
+			print(
+				f'Loss training:\t\t{round(losses["train"][n], 4)}\t | Loss validation:\t{round(losses["val"][n], 4)}')
+			print(
+				f'Cost training:\t\t{round(costs["train"][n], 4)}\t | Cost validation:\t{round(costs["val"][n], 4)}')
+			print(
+				f'Acc training:\t\t{round(accuracies["train"][n], 4)}\t | Acc validation:\t{round(accuracies["val"][n], 4)}\t | Acc testing:\t{round(accuracies["test"][n], 4)}')
 
 		settings = {'t': t, 'our_lambda': our_lambda, 'eta': eta,
 					'eta_min': eta_min, 'eta_max': eta_max, 'n_batch': n_batch,
@@ -366,23 +408,133 @@ class TwoLayerNetwork():
 
 		return accuracies, costs, losses, list_settings
 
+	def mini_batch_gradient_descent_fixed(self, X, Y, our_lambda=0, n_batch=100, n_epochs=20):
+		""" Learn the model by performing mini-batch gradient descent
+			our_lambda 	- regularization term
+			n_batch 	- number of examples per mini-batch
+			eta_min		- minimum learning rate
+			eta_max		- maximum learning rate
+			n_s			- step size
+			n_epochs 	- number of runs through the whole training set """
+
+		accuracies = dict()
+		accuracies['train'] = np.zeros(n_epochs)
+		accuracies['val'] = np.zeros(n_epochs)
+		accuracies['test'] = np.zeros(n_epochs)
+
+		if self.verbose:
+			print()
+			print(f'Accuracy training:\t{round(self.__compute_accuracy(self.data["train_set"]["X"], self.data["train_set"]["y"]), 4)}')
+			print(f'Accuracy validation:\t{round(self.__compute_accuracy(self.data["val_set"]["X"], self.data["val_set"]["y"]), 4)}')
+			print(f'Accuracy testing:\t{round(self.__compute_accuracy(self.data["test_set"]["X"], self.data["test_set"]["y"]), 4)}')
+
+		losses, costs = dict(), dict()
+		losses['train'], costs['train'] = np.zeros(n_epochs), np.zeros(n_epochs)
+		losses['val'], costs['val'] = np.zeros(n_epochs), np.zeros(n_epochs)
+
+		learning_rates_min = 0
+		learning_rates_max = 0.02
+		num_etas = 20
+		learning_rates = np.linspace(learning_rates_min, learning_rates_max, num_etas)
+		test_accuracies = list()
+
+		total = n_batch * n_epochs
+		switch_at = total / num_etas
+		original_switch_at = switch_at
+		print(f'total: {total}')
+		print(f'switch_at: {switch_at}')
+		print(learning_rates.shape[0])
+
+		idx = 0
+		counter = 0
+		eta = learning_rates[idx]
+		for n in range(n_epochs):
+			for i in range(n_batch):
+				N = int(X.shape[1] / n_batch)
+				i_start = (i) * N
+				i_end = (i + 1) * N
+
+				X_batch = X[:, i_start:i_end]
+				Y_batch = Y[:, i_start:i_end]
+
+				X_batch = random_jitter_to_batch(X_batch)
+
+				grad_W1, grad_b1, grad_W2, grad_b2 = \
+				self.compute_gradients(X_batch, Y_batch, our_lambda)
+
+				self.W1 -= eta * grad_W1
+				self.b1 -= eta * grad_b1
+				self.W2 -= eta * grad_W2
+				self.b2 -= eta * grad_b2
+
+				counter += 1
+
+				if (n + 1) * counter >= (n + 1) * switch_at:
+					switch_at += original_switch_at
+					idx += 1
+					if idx < learning_rates.shape[0]:
+						eta = learning_rates[idx]
+					print()
+					print(f'Current eta: {eta}')
+					print(f'Current counter: {counter}')
+					accuracies['train'][n] = self.__compute_accuracy(self.data['train_set']['X'], self.data['train_set']['y'])
+					accuracies['val'][n] = self.__compute_accuracy(self.data['val_set']['X'], self.data['val_set']['y'])
+					accuracies['test'][n] = self.__compute_accuracy(self.data['test_set']['X'], self.data['test_set']['y'])
+					print(
+						f'Loss training:\t\t{round(losses["train"][n], 4)}\t | Loss validation:\t{round(losses["val"][n], 4)}')
+					print(
+						f'Cost training:\t\t{round(costs["train"][n], 4)}\t | Cost validation:\t{round(costs["val"][n], 4)}')
+					print(
+						f'Acc training:\t\t{round(accuracies["train"][n], 4)}\t | Acc validation:\t{round(accuracies["val"][n], 4)}\t | Acc testing:\t{round(accuracies["test"][n], 4)}')
+					test_accuracies.append(accuracies['test'][n])
+					print(test_accuracies)
+
+			# losses['train'][n], costs['train'][n] = \
+			# self.__compute_loss_and_cost(X, Y, our_lambda)
+
+			# losses['val'][n], costs['val'][n] = \
+			# self.__compute_loss_and_cost(self.data['val_set']['X'],
+			# 							 self.data['val_set']['Y'],
+			# 							 our_lambda)
+
+			# accuracies['train'][n] = self.__compute_accuracy(self.data['train_set']['X'],
+			# 												 self.data['train_set']['y'])
+			# accuracies['val'][n] = self.__compute_accuracy(self.data['val_set']['X'],
+			# 											   self.data['val_set']['y'])
+			# accuracies['test'][n] = self.__compute_accuracy(self.data['test_set']['X'],
+			# 												self.data['test_set']['y'])
+
+			# if self.verbose:
+			print()
+			print(f'Epoch: {n+1} / {n_epochs}')
+			# print(
+			# 	f'Loss training:\t\t{round(losses["train"][n], 4)}\t | Loss validation:\t{round(losses["val"][n], 4)}')
+			# print(
+			# 	f'Cost training:\t\t{round(costs["train"][n], 4)}\t | Cost validation:\t{round(costs["val"][n], 4)}')
+			# print(
+			# 	f'Acc training:\t\t{round(accuracies["train"][n], 4)}\t | Acc validation:\t{round(accuracies["val"][n], 4)}\t | Acc testing:\t{round(accuracies["test"][n], 4)}')
+
+		return accuracies, costs, losses, test_accuracies
+
 
 def main():
 	# TODO: FIX BATCH_SIZE AND N_BATCH ERROR. n_batch is the number of batches,
 	# but it should be calculated from the input batch_size, not vice versa.
 	seed = 12345
 	np.random.seed(seed)
+	all_data = True
+	display_jittering = False
 	search = False
-	best = False
+	find_etas = False
+	best = True
 	find_end_of_cycle_settings = False
-
 
 	print()
 	print("------------------------ Loading dataset ------------------------")
 	datasets_folder = "Datasets/cifar-10-batches-py/"
 	labels = unpickle(datasets_folder + "batches.meta")[b'label_names']
 
-	if search or best or find_end_of_cycle_settings:
+	if all_data:
 		if search:
 			num_val = 5000
 		else:
@@ -426,6 +578,26 @@ def main():
 	for dataset in datasets.values():
 		dataset['X'] = normalize_dataset(dataset['X'], verbose=1)
 
+	if display_jittering:
+		for i in range(2):
+			f, ax = plt.subplots(3, 2)
+			# original_img = datasets['train_set']['X'][:, 4]
+			original_img = datasets['train_set']['X'][:, i]
+			original_img = original_img.reshape(32, 32, 3, order='F')
+			original_img = rotate(original_img, angle=-90, reshape=False)
+
+			for k in range(3):
+				for j in range(2):
+					if (k == 0 and j == 0) or (k == 0 and j == 1):
+						ax[k, j].imshow(original_img)
+					else:
+						img = random_jitter(datasets['train_set']['X'][:, i])
+						img = img.reshape(32, 32, 3, order='F')
+						img = rotate(img, angle=-90, reshape=False)
+						ax[k, j].imshow(img)
+			plt.show()
+		quit()
+
 	print()
 	print("---------------------- Learning classifier ----------------------")
 
@@ -436,16 +608,16 @@ def main():
 		results_file = 'results/results.csv'
 		# If file not exists, create it with its headers.
 		if not os.path.exists(results_file):
-			headers = ['top_5_vacc', 'tracc', 'vacc', 'teacc', 'lambda', 'n_batch',
+			headers = ['tracc', 'vacc', 'teacc', 'lambda', 'n_batch',
 					   'eta_min', 'eta_max', 'm', 'n_s', 'n_epochs', 'seed']
 			with open(results_file, 'w+') as f:
-				writer = csv.writer(f, dialect='excel', delimiter=';')
+				writer = csv.writer(f, dialect='excel', delimiter=',')
 				writer.writerow(headers)
 
 		n_batch = 100
 		eta_min = 1e-5
 		eta_max = 1e-1
-		num_nodes = 50 # Number of nodes in the hidden layer
+		num_nodes = 200 # Number of nodes in the hidden layer
 
 		# As per Assignment PDF.
 		n_s = 2 * int(np.floor(datasets['train_set']['X'].shape[1] / n_batch))
@@ -460,13 +632,27 @@ def main():
 			lambdas = np.linspace(lambda_min, lambda_max, 8)
 		else:
 			# Fine lambda search.
-			lambda_min = 1e-5
-			lambda_max = 0.0285785714285714 # Pasted in from coarse results.
+			# lambda_min = 1e-5
+			# lambda_max = 0.0285785714285714 # Pasted in from coarse results.
+			# lambda_min = 0.0041
+			# lambda_max = 0.0123 # Pasted in from coarse results.
+			# lambda_min = 1e-5
+			# lambda_max = 0.0143 # Pasted in from coarse results.
+			# lambda_min = 1e-5
+			# lambda_max = 0.00205  # Pasted in from coarse results.
+			# lambda_min = 0.0041
+			# lambda_max = 0.01  # Pasted in from coarse results.
+			lambda_min = 0.001
+			lambda_max = 0.01  # Pasted in from coarse results.
 			lambdas = np.linspace(lambda_min, lambda_max, 8)
 
 		for our_lambda in lambdas:
-			our_lambda = round(our_lambda, 4)
+			our_lambda = round(our_lambda, 5)
 			clf = TwoLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
+
+			print()
+			print(
+				f'Lambda: {our_lambda}\tm: {num_nodes}\t\tn_s: {n_s}\tn_epochs: {n_epochs}')
 
 			accuracies, costs, losses, _ = \
 			clf.mini_batch_gradient_descent(datasets['train_set']['X'],
@@ -481,14 +667,14 @@ def main():
 			tracc = round(accuracies["train"][-1], 4)
 			vacc = round(accuracies["val"][-1], 4)
 			teacc = round(accuracies["test"][-1], 4)
-			top_5_mean = np.sum(sorted(accuracies['val'][:], reverse=True)[:5]) / 5
-			top_5_mean = round(top_5_mean, 4)
+			# top_5_mean = np.sum(sorted(accuracies['val'][:], reverse=True)[:5]) / 5
+			# top_5_mean = round(top_5_mean, 4)
 
 			print()
 			print(f'Final training data accuracy:\t\t{tracc}')
 			print(f'Final validation data accuracy:\t\t{vacc}')
 			print(f'Final test data accuracy:\t\t{teacc}')
-			print(f'Final top 5 mean:\t\t\t{top_5_mean}')
+			# print(f'Final top 5 mean:\t\t\t{top_5_mean}')
 
 			title = f'lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_n-s{n_s}_m{num_nodes}_eta-min{eta_min}_eta-max{eta_max}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
 			plot_three_subplots(costs=(costs['train'], costs['val']),
@@ -496,39 +682,106 @@ def main():
 								accuracies=(accuracies['train'], accuracies['val']),
 								title='search_' + title, show=False)
 
-			results = [top_5_mean, tracc, vacc, teacc, our_lambda, n_batch,
+			results = [tracc, vacc, teacc, our_lambda, n_batch,
 					   eta_min, eta_max, num_nodes, n_s, n_epochs, seed]
 			with open(results_file, 'a') as f:
-				writer = csv.writer(f, dialect='excel', delimiter=';')
+				writer = csv.writer(f, dialect='excel', delimiter=',')
 				writer.writerow(results)
 
+	if find_etas:
+		print()
+		print("------------------------- Find etas -------------------------")
+		results_file = 'results/etas.csv'
+		# If file not exists, create it with its headers.
+		if not os.path.exists(results_file):
+			headers = ['tracc', 'vacc', 'teacc', 'lambda', 'n_batch',
+					   'eta', 'm', 'n_s', 'n_epochs', 'seed']
+			with open(results_file, 'w+') as f:
+				writer = csv.writer(f, dialect='excel', delimiter=',')
+				writer.writerow(headers)
+
+		n_batch = 100
+		num_nodes = 200 # Number of nodes in the hidden layer
+		our_lambda = 0.00486
+		n_epochs = 24
+
+		learning_rates_min = 0
+		learning_rates_max = 0.03
+		learning_rates = np.linspace(learning_rates_min, learning_rates_max, 20)
+
+		clf = TwoLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
+
+		print()
+		print(
+			f'Lambda: {our_lambda}\tm: {num_nodes}\t\tn_epochs: {n_epochs}')
+
+		accuracies, costs, losses, test_accuracies = \
+						clf.mini_batch_gradient_descent_fixed(datasets['train_set']['X'],
+															datasets['train_set']['Y'],
+															our_lambda=our_lambda,
+															n_batch=n_batch,
+															n_epochs=n_epochs)
+
+		tracc = round(accuracies["train"][-1], 4)
+		vacc = round(accuracies["val"][-1], 4)
+		teacc = round(accuracies["test"][-1], 4)
+
+		print()
+		print(f'Final training data accuracy:\t\t{tracc}')
+		print(f'Final validation data accuracy:\t\t{vacc}')
+		print(f'Final test data accuracy:\t\t{teacc}')
+
+		results = [tracc, vacc, teacc, our_lambda, n_batch, num_nodes, n_epochs, seed]
+		with open(results_file, 'a') as f:
+			writer = csv.writer(f, dialect='excel', delimiter=',')
+			writer.writerow(results)
+
+		title = f'etas_lambda{our_lambda}_n-batch{n_batch}_n-epochs{n_epochs}_m{num_nodes}_tr-acc{tracc}_v-acc{vacc}_te-acc{teacc}_seed{seed}'
+		plt.plot(learning_rates, test_accuracies)
+		plt.suptitle(title)
+		plt.xlabel('Learning rate')
+		plt.ylabel('Accuracy')
+		plt.savefig(f'plots/{title}.png', bbox_inches="tight")
+		plt.show()
+		
 	if best:
 		print()
 		print("------------------- Training best classifier -------------------")
 		results_file = 'results/results_best.csv'
 		# If file not exists, create it with its headers.
 		if not os.path.exists(results_file):
-			headers = ['top_5_vacc', 'tracc', 'vacc', 'teacc', 'lambda', 'n_batch',
-					   'eta_min', 'eta_max', 'm', 'n_s', 'n_epochs', 'seed']
+			headers = ['tracc', 'vacc', 'teacc', 'lambda', 'n_batch', 'eta_min', 'eta_max', 'm', 'n_s', 'n_epochs', 'seed']
 			with open(results_file, 'w+') as f:
 				writer = csv.writer(f, dialect='excel', delimiter=';')
 				writer.writerow(headers)
 
 		n_batch = 100
-		eta_min = 1e-5
-		eta_max = 1e-1
-		num_nodes = 50 # Number of nodes in the hidden layer
+		eta_min = 0.0001
+		# eta_max = 0.1375
+		eta_max = 0.01375
+		num_nodes = 200 # Number of nodes in the hidden layer
 
 		n_s = 4 * int(np.floor(datasets['train_set']['X'].shape[1] / n_batch))
 
 		# Number of epochs set to equal four cycles.
-		n_epochs = int(8 * (n_s / n_batch))
+		# n_epochs = int(8 * (n_s / n_batch))
+		n_epochs = int(2 * (n_s / n_batch))
+		print(n_epochs)
 
-		our_lambda = 0.00821
+		# our_lambda = 0.00821
+		our_lambda = 0.004862
+		# our_lambda = 0.00031
 
-		clf = TwoLayerNetwork(labels, datasets, m=num_nodes, verbose=0)
+		print(n_batch)
+		print(eta_min)
+		print(eta_max)
+		print(num_nodes)
+		print(n_s)
+		print(n_epochs)
 
-		accuracies, costs, losses, _ = \
+		clf = TwoLayerNetwork(labels, datasets, m=num_nodes, verbose=1)
+
+		accuracies, costs, losses, settings = \
 		clf.mini_batch_gradient_descent(datasets['train_set']['X'],
 										datasets['train_set']['Y'],
 										our_lambda=our_lambda,
@@ -541,14 +794,15 @@ def main():
 		tracc = round(accuracies["train"][-1], 4)
 		vacc = round(accuracies["val"][-1], 4)
 		teacc = round(accuracies["test"][-1], 4)
-		top_5_mean = np.sum(sorted(accuracies['val'][:], reverse=True)[:5]) / 5
-		top_5_mean = round(top_5_mean, 4)
+
+		for setting in settings:
+			print()
+			print(setting)
 
 		print()
 		print(f'Final training data accuracy:\t\t{tracc}')
 		print(f'Final validation data accuracy:\t\t{vacc}')
 		print(f'Final test data accuracy:\t\t{teacc}')
-		print(f'Final top 5 mean:\t\t\t{top_5_mean}')
 		print()
 		print(sorted(accuracies['val'][:10], reverse=True))
 
@@ -558,8 +812,7 @@ def main():
 							accuracies=(accuracies['train'], accuracies['val']),
 							title='best_' + title, show=True)
 
-		results = [top_5_mean, tracc, vacc, teacc, our_lambda, n_batch,
-				   eta_min, eta_max, num_nodes, n_s, n_epochs, seed]
+		results = [tracc, vacc, teacc, our_lambda, n_batch, eta_min, eta_max, num_nodes, n_s, n_epochs, seed]
 		with open(results_file, 'a') as f:
 			writer = csv.writer(f, dialect='excel', delimiter=';')
 			writer.writerow(results)
